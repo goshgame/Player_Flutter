@@ -6,6 +6,7 @@
 #import "FTXBasePlayer.h"
 #import "FTXVodPlayerDelegate.h"
 #import "FTXRenderViewFactory.h"
+#import <CoreVideo/CoreVideo.h>
 
 @protocol FlutterPluginRegistrar;
 
@@ -20,6 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
                         onlyAudio:(BOOL)onlyAudio;
 
 - (void)notifyAppTerminate:(UIApplication *)application;
+
+/// 启用/关闭外部纹理渲染（用于 Flutter Texture）
+/// 仅支持 VOD，且不支持 DRM/HDR/PIP/字幕内嵌
+- (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef _Nonnull pixelBuffer))consumer renderWithTexture:(BOOL)renderWithTexture;
+- (void)disableExternalTexture;
 
 @end
 

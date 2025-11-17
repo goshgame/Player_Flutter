@@ -142,6 +142,15 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         mUIHandler.removeCallbacksAndMessages(null);
 
         TXFlutterEngineHolder.getInstance().removeAppLifeListener(mAppLifeListener);
+        if (mPipManager != null) {
+            mPipManager.releaseCallback(getPlayerId());
+        }
+        if (mFlutterPluginBinding != null) {
+            FtxMessages.TXFlutterLivePlayerApi.setUp(
+                    mFlutterPluginBinding.getBinaryMessenger(),
+                    String.valueOf(getPlayerId()),
+                    null);
+        }
     }
 
     protected long init(boolean onlyAudio) {
@@ -161,6 +170,9 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
     int startPlayerLivePlay(String url) {
         LiteavLog.d(TAG, "startLivePlay:");
         if (null != mLivePlayer) {
+            if (null != mCurRenderView) {
+                mCurRenderView.setPlayer(this);
+            }
             mLivePlayer.resumeVideo();
             if (!mIsMute) {
                 mLivePlayer.resumeAudio();
@@ -186,7 +198,6 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         if (isNeedClearLastImg && null != mCurRenderView) {
             LiteavLog.i(TAG, "stopPlay target clear last img, player:" + hashCode());
             mCurRenderView.clearTexture();
-            mCurRenderView.setPlayer(this);
         }
         return result;
     }
