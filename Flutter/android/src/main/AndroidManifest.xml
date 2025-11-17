@@ -26,7 +26,7 @@
                 <action android:name="com.tencent.flutter.doExitPip"/>
             </intent-filter>
         </activity>
-        
+
         <service android:name="com.tencent.vod.flutter.ui.TXAndroid12BridgeService"/>
     </application>
 

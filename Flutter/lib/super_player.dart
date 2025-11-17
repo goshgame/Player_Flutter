@@ -22,6 +22,7 @@ part 'Core/txliveplayer_controller.dart';
 part 'Core/txplayer_controller.dart';
 part 'Core/txplayer_define.dart';
 part 'Core/txplayer_widget.dart';
+part 'Core/txplayer_texture_widget.dart';
 part 'Core/txvodplayer_config.dart';
 part 'Core/txvodplayer_controller.dart';
 part 'Core/txvoddownload_controller.dart';

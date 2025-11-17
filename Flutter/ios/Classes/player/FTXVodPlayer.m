@@ -29,8 +29,13 @@ static const int uninitialized = -1;
 @property (nonatomic, strong) TXVodPlayerFlutterAPI* vodFlutterApi;
 @property (nonatomic, strong) FTXRenderViewFactory* renderViewFactory;
 @property (nonatomic, strong) FTXRenderView *curRenderView;
+@property (nonatomic, strong) UIView *txPipView;
 @property (nonatomic, assign) NSUInteger renderMode;
 @property (nonatomic, assign) float cacheStartTime;
+
+// Texture 外部纹理渲染：向上层提供 CVPixelBuffer 的消费回调
+@property (nonatomic, copy) void (^pixelBufferConsumer)(CVPixelBufferRef pixelBuffer);
+@property (nonatomic, assign) BOOL renderWithTexture;
 
 @end
 /**
@@ -123,6 +128,7 @@ static const int uninitialized = -1;
         _txVodPlayer = nil;
     }
 
+    self.txPipView = nil;
     self.curRenderView = nil;
     self.cacheStartTime = 0;
     
@@ -167,6 +173,7 @@ static const int uninitialized = -1;
     if (_txVodPlayer == nil) {
         _txVodPlayer = [TXVodPlayer new];
         _txVodPlayer.vodDelegate = self;
+        _txVodPlayer.videoProcessDelegate = self;
         TXVodPlayConfig *vodConfig = [[TXVodPlayConfig alloc] init];
         NSMutableDictionary<NSString *, id> *newExtInfoMap = [NSMutableDictionary dictionary];
         [newExtInfoMap setObject:@(0) forKey:@"450"];
@@ -175,6 +182,35 @@ static const int uninitialized = -1;
         [self setupPlayerWithBool:onlyAudio];
     }
     return [NSNumber numberWithLongLong:NO_ERROR];
+}
+
+/// 启用外部纹理渲染：
+/// - 解绑内部渲染视图
+/// - 设置 videoProcessDelegate = self，通过 onPlayerPixelBuffer: 回调像素帧
+/// - 不支持 DRM/HDR/PIP/字幕内嵌（如涉及，请勿启用该能力）
+- (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef _Nonnull))consumer renderWithTexture:(BOOL)renderWithTexture {
+    self.pixelBufferConsumer = consumer;
+    self.renderWithTexture = renderWithTexture;
+    if (_txVodPlayer != nil) {
+        if (renderWithTexture) {
+            // 移除内部渲染视图，避免双重渲染
+            [_txVodPlayer removeVideoWidget];
+            [self setRenderView:nil];
+        }
+        // 注意：若需要特定像素格式，可通过配置 renderPixelFormatType = kCVPixelFormatType_32BGRA
+        // 这里依赖 SDK 默认输出格式；如需强制，可在 setPlayerConfig 内扩展
+//        _txVodPlayer.videoProcessDelegate = self;
+    }
+}
+
+/// 关闭外部纹理渲染：
+/// - 清空回调
+/// - 还原 videoProcessDelegate，后续如需恢复 PlatformView 由上层重新绑定 viewId
+- (void)disableExternalTexture {
+    self.pixelBufferConsumer = nil;
+    if (_txVodPlayer != nil) {
+        _txVodPlayer.videoProcessDelegate = nil;
+    }
 }
 
 - (void)setIsAutoPlay:(BOOL)b
@@ -450,6 +486,11 @@ static const int uninitialized = -1;
  * 说明：渲染图像的数据类型为config中设置的renderPixelFormatType
  */
 - (BOOL)onPlayerPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+    // 若启用了外部纹理渲染，则将像素帧交由上层消费，并阻止 SDK 内部渲染
+    if (self.pixelBufferConsumer) {
+        self.pixelBufferConsumer(pixelBuffer);
+        return self.renderWithTexture;
+    }
     return NO;
 }
 
@@ -629,10 +670,51 @@ static const int uninitialized = -1;
     if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipRequestStart)]) {
         [self.delegate onPlayerPipRequestStart];
     }
-    
+
+    UIViewController* flutterVC = [self getFlutterViewController];
+    [flutterVC.view addSubview:self.txPipView];
+    [_txVodPlayer setupVideoWidget:self.txPipView insertIndex:0];
     [_txVodPlayer enterPictureInPicture];
     
     return NO_ERROR;
+}
+
+- (UIView *)txPipView {
+    if (!_txPipView) {
+        // Set the size to 1 pixel to ensure proper display in PIP.
+        _txPipView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        _txPipView.hidden = YES;
+    }
+    return _txPipView;
+}
+
+- (UIViewController *)getFlutterViewController {
+    UIWindow *window = nil;
+    if (@available(iOS 13.0, *)) {
+        NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+        for (UIScene *scene in connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *w in windowScene.windows) {
+                    if (w.isKeyWindow) {
+                        window = w;
+                        break;
+                    }
+                }
+                if (window != nil) {
+                    break;
+                }
+            }
+        }
+    } else {
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.isKeyWindow) {
+                window = w;
+                break;
+            }
+        }
+    }
+    return window.rootViewController;
 }
 
 #pragma mark - PIP delegate
@@ -652,15 +734,21 @@ static const int uninitialized = -1;
     
     if (pipState == TX_VOD_PLAYER_PIP_STATE_DID_STOP) {
         self.hasEnteredPipMode = NO;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
-                [player exitPictureInPicture];
-            }
+        if (self.restoreUI) {
+            self.restoreUI = NO;
+        } else {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
+                    [player exitPictureInPicture];
+                }
+                [self->_txPipView removeFromSuperview];
+                self->_txPipView = nil;
 
-            if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
-                [self.delegate onPlayerPipStateDidStop];
-            }
-        });
+                if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
+                    [self.delegate onPlayerPipStateDidStop];
+                }
+            });
+        }
     }
     
     if (pipState == TX_VOD_PLAYER_PIP_STATE_RESTORE_UI) {
