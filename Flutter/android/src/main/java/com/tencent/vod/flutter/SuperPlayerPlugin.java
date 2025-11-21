@@ -57,6 +57,9 @@ import java.util.Map;
 import java.util.Set;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
+import io.flutter.view.TextureRegistry;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 
@@ -90,6 +93,40 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private FtxMessages.TXPluginFlutterAPI mPluginApi;
     private FTXRenderViewFactory mRenderViewFactory;
+
+    // Texture 后端通道与缓存
+    private MethodChannel mTextureChannel;
+    private final Map<Integer, TextureEntryHolder> mTextureEntries = new HashMap<>();
+    // 单例引用，便于播放器回调分辨率时更新 Texture 的默认缓冲尺寸
+    private static SuperPlayerPlugin sInstance;
+
+    /**
+     * 保存每个 playerId 对应的 Flutter Texture 资源，便于释放和复用。
+     */
+    private static final class TextureEntryHolder {
+        final TextureRegistry.SurfaceTextureEntry entry;
+        final android.view.Surface surface;
+        final long id;
+
+        TextureEntryHolder(TextureRegistry.SurfaceTextureEntry entry) {
+            this.entry = entry;
+            this.surface = new android.view.Surface(entry.surfaceTexture());
+            this.id = entry.id();
+        }
+
+        void release() {
+            try {
+                surface.release();
+            } catch (Throwable t) {
+                // ignore
+            }
+            try {
+                entry.release();
+            } catch (Throwable t) {
+                // ignore
+            }
+        }
+    }
 
     private final FTXAudioManager.AudioFocusChangeListener audioFocusChangeListener =
             new FTXAudioManager.AudioFocusChangeListener() {
@@ -181,6 +218,7 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         LiteavLog.i(TAG, "onAttachedToEngine");
+        sInstance = this;
         mRenderViewFactory = new FTXRenderViewFactory(flutterPluginBinding.getBinaryMessenger());
         flutterPluginBinding
                 .getPlatformViewRegistry()
@@ -195,6 +233,115 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         mFTXDownloadManager = new FTXDownloadManager(mFlutterPluginBinding);
         registerReceiver();
         TXLiveBase.setListener(mSDKEvent);
+
+        // 注册 Texture 渲染后端通道（增量能力，不影响既有 Pigeon 通道）
+        mTextureChannel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(),
+                "com.tencent.vod.flutter/texture");
+        mTextureChannel.setMethodCallHandler(new MethodChannel.MethodCallHandler() {
+            @Override
+            public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+                switch (call.method) {
+                    case "createTexture":
+                        handleCreateTexture(call, result);
+                        break;
+                    case "disposeTexture":
+                        handleDisposeTexture(call, result);
+                        break;
+                    default:
+                        result.notImplemented();
+                }
+            }
+        });
+    }
+
+    public static SuperPlayerPlugin getInstance() {
+        return sInstance;
+    }
+
+    private void handleCreateTexture(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        final Object pidObj = call.argument("playerId");
+        if (!(pidObj instanceof Integer)) {
+            LiteavLog.e(TAG, "createTexture bad_args: playerId required");
+            result.error("bad_args", "playerId required", null);
+            return;
+        }
+        final int playerId = (Integer) pidObj;
+        final FTXBasePlayer base = mPlayers.get(playerId);
+        if (base == null) {
+            LiteavLog.e(TAG, "createTexture no_player: " + playerId);
+            result.error("no_player", "player not found: " + playerId, null);
+            return;
+        }
+
+        // 如果已存在旧的 Texture，先释放
+        TextureEntryHolder old = mTextureEntries.remove(playerId);
+        if (old != null) {
+            try { old.release(); } catch (Throwable ignore) {}
+        }
+
+        // 创建 Flutter 提供的 SurfaceTexture，并将 Surface 绑定到播放器
+        final TextureRegistry.SurfaceTextureEntry entry = mFlutterPluginBinding.getTextureRegistry().createSurfaceTexture();
+        final TextureEntryHolder holder = new TextureEntryHolder(entry);
+        mTextureEntries.put(playerId, holder);
+
+        try {
+            // 解除 PlatformView 绑定，切换为直接 Surface 输出
+            if (base instanceof com.tencent.vod.flutter.player.render.FTXPlayerRenderHost) {
+                ((com.tencent.vod.flutter.player.render.FTXPlayerRenderHost) base).setRenderView(null);
+            }
+            if (base instanceof com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost) {
+                ((com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost) base).setSurface(holder.surface);
+            }
+            // 为新创建的 Texture 设置一个合理的默认缓冲尺寸，避免早期 1x1 造成的整屏单像素
+            try {
+                int fallbackW = 720; // 兜底宽
+                int fallbackH = 1280; // 兜底高
+                holder.entry.surfaceTexture().setDefaultBufferSize(fallbackW, fallbackH);
+                LiteavLog.i(TAG, "createTexture setDefaultBufferSize fallback " + fallbackW + "x" + fallbackH
+                        + ", playerId=" + playerId + ", textureId=" + holder.id);
+            } catch (Throwable ignore) {}
+            LiteavLog.i(TAG, "createTexture success, playerId=" + playerId + ", textureId=" + holder.id);
+            result.success((int) holder.id);
+        } catch (Throwable t) {
+            // 创建或绑定失败，回滚并返回错误，Flutter 端将回退 PlatformView
+            mTextureEntries.remove(playerId);
+            try { holder.release(); } catch (Throwable ignore) {}
+            LiteavLog.e(TAG, "createTexture failed: " + t);
+            result.error("create_failed", t.getMessage(), null);
+        }
+    }
+
+    private void handleDisposeTexture(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        final Object pidObj = call.argument("playerId");
+        if (!(pidObj instanceof Integer)) {
+            LiteavLog.e(TAG, "disposeTexture bad_args: playerId required");
+            result.error("bad_args", "playerId required", null);
+            return;
+        }
+        final int playerId = (Integer) pidObj;
+        TextureEntryHolder holder = mTextureEntries.remove(playerId);
+        if (holder != null) {
+            try { holder.release(); } catch (Throwable ignore) {}
+        }
+        // 释放时不强制恢复 PlatformView，由上层自行决定
+        LiteavLog.i(TAG, "disposeTexture, playerId=" + playerId);
+        result.success(null);
+    }
+
+    /**
+     * 在拿到视频真实分辨率后，更新对应 playerId 的 Texture 默认缓冲尺寸，规避 1x1 问题。
+     */
+    public void updateTextureBufferSizeByPlayer(int playerId, int videoW, int videoH) {
+        if (playerId <= 0 || videoW <= 0 || videoH <= 0) return;
+        TextureEntryHolder holder = mTextureEntries.get(playerId);
+        if (holder == null) return;
+        try {
+            holder.entry.surfaceTexture().setDefaultBufferSize(videoW, videoH);
+            LiteavLog.i(TAG, "updateTextureBufferSizeByPlayer setDefaultBufferSize " + videoW + "x" + videoH
+                    + ", playerId=" + playerId + ", textureId=" + holder.id);
+        } catch (Throwable t) {
+            LiteavLog.e(TAG, "updateTextureBufferSizeByPlayer error: " + t);
+        }
     }
 
     /******* native method call start *******/
@@ -484,6 +631,7 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
         LiteavLog.i(TAG, "onDetachedFromEngine");
+        sInstance = null;
         mFTXDownloadManager.destroy();
         if (null != mOrientationManager) {
             mOrientationManager.disable();

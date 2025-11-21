@@ -46,6 +46,7 @@ import com.tencent.vod.flutter.model.TXPipResult;
 import com.tencent.vod.flutter.model.TXPlayerHolder;
 import com.tencent.vod.flutter.player.render.FTXVodPlayerRenderHost;
 import com.tencent.vod.flutter.tools.FTXVersionAdapter;
+import com.tencent.vod.flutter.SuperPlayerPlugin;
 import com.tencent.vod.flutter.tools.TXCommonUtil;
 import com.tencent.vod.flutter.tools.TXFlutterEngineHolder;
 import com.tencent.vod.flutter.ui.render.FTXRenderView;
@@ -155,11 +156,18 @@ public class FTXVodPlayer extends FTXVodPlayerRenderHost implements ITXVodPlayLi
             mVodPlayer = null;
         }
         mCurrentRotation = 0;
+        setRenderView(null);
         mCurRenderView = null;
         TXFlutterEngineHolder.getInstance().removeAppLifeListener(mAppLifeListener);
         releaseTXImageSprite();
         if (null != mPipManager) {
             mPipManager.releaseCallback(getPlayerId());
+        }
+        if (mFlutterPluginBinding != null) {
+            FtxMessages.TXFlutterVodPlayerApi.setUp(
+                    mFlutterPluginBinding.getBinaryMessenger(),
+                    String.valueOf(getPlayerId()),
+                    null);
         }
     }
 
@@ -183,6 +191,13 @@ public class FTXVodPlayer extends FTXVodPlayerRenderHost implements ITXVodPlayLi
                         bundle.putInt("videoTop", videoTop);
                         bundle.putInt("videoRight", videoRight);
                         bundle.putInt("videoBottom", videoBottom);
+                        // 分辨率变化时，同步更新 Texture 的默认缓冲尺寸，避免出现异常尺寸
+                        try {
+                            SuperPlayerPlugin plugin = SuperPlayerPlugin.getInstance();
+                            if (plugin != null) {
+                                plugin.updateTextureBufferSizeByPlayer(getPlayerId(), videoWidth, videoHeight);
+                            }
+                        } catch (Throwable ignore) {}
                         mUIHandler.post(new Runnable() {
                             @Override
                             public void run() {
@@ -206,6 +221,13 @@ public class FTXVodPlayer extends FTXVodPlayerRenderHost implements ITXVodPlayLi
                 int resolutionWidth = txVodPlayer.getWidth();
                 int resolutionHeight = txVodPlayer.getHeight();
                 notifyTextureResolution(resolutionWidth, resolutionHeight);
+                // 如果使用 Flutter Texture 路径，通知插件根据真实分辨率更新 SurfaceTexture 的默认缓冲尺寸
+                try {
+                    SuperPlayerPlugin plugin = SuperPlayerPlugin.getInstance();
+                    if (plugin != null) {
+                        plugin.updateTextureBufferSizeByPlayer(getPlayerId(), resolutionWidth, resolutionHeight);
+                    }
+                } catch (Throwable ignore) {}
                 break;
             case TXVodConstants.VOD_PLAY_EVT_SEEK_COMPLETE:
                 reDraw();

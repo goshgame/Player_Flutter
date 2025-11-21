@@ -142,6 +142,15 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         mUIHandler.removeCallbacksAndMessages(null);
 
         TXFlutterEngineHolder.getInstance().removeAppLifeListener(mAppLifeListener);
+        if (mPipManager != null) {
+            mPipManager.releaseCallback(getPlayerId());
+        }
+        if (mFlutterPluginBinding != null) {
+            FtxMessages.TXFlutterLivePlayerApi.setUp(
+                    mFlutterPluginBinding.getBinaryMessenger(),
+                    String.valueOf(getPlayerId()),
+                    null);
+        }
     }
 
     protected long init(boolean onlyAudio) {
