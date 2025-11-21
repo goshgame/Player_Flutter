@@ -155,6 +155,7 @@ public class FTXVodPlayer extends FTXVodPlayerRenderHost implements ITXVodPlayLi
             mVodPlayer.setPlayerView((TXCloudVideoView) null);
             mVodPlayer = null;
         }
+        setRenderView(null);
         mCurrentRotation = 0;
         setRenderView(null);
         mCurRenderView = null;
