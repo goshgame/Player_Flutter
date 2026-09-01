@@ -23,11 +23,91 @@ android {
         buildConfigField("String", "FLUTTER_PLAYER_VERSION", "\"${rootProject.ext.playerVersion}\"")
         minSdkVersion rootProject.ext.minSdkVersion
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
+import java.util.regex.Pattern
+
+def getSubSpecFromPubspec() {
+    def allowedVersions = ['player', 'professional', 'premium', 'professional_premium']
+
+    // rootProject.projectDir is usually [HostApp]/android/
+    def hostProjectRoot = rootProject.projectDir.parentFile
+    def pubspecFile = new File(hostProjectRoot, "pubspec.yaml")
+
+    println("[SuperPlayer] Target Host Pubspec: ${pubspecFile.absolutePath}")
+
+    if (pubspecFile.exists()) {
+        def content = pubspecFile.text
+        def pattern = Pattern.compile("super_player:\\s*\\n\\s*sub_spec:\\s*['\"]?(\\w+)['\"]?")
+        def matcher = pattern.matcher(content)
+
+        if (matcher.find()) {
+            def result = matcher.group(1)
+            println("[SuperPlayer] get liteavResult: ${result}")
+            if (result in allowedVersions) {
+                println("[SuperPlayer] valid subSpecVersion: ${result}")
+                return result
+            } else {
+                println("[SuperPlayer] warning: invalid subSpecVersion '${result}', allowed: ${allowedVersions.join(', ')}")
+                println("[SuperPlayer] fallback to default: professional")
+                return "professional"
+            }
+        } else {
+            println("[SuperPlayer] sub_spec not found\n: ${content}")
+        }
+    } else {
+        println("[SuperPlayer] pubspecFile not exists: ${pubspecFile}")
+    }
+    return "professional"
+}
+
+// LiteAVSDK series -> Maven module name
+def liteavSubSpecModules = [
+    player: "LiteAVSDK_Player",
+    professional: "LiteAVSDK_Professional",
+    premium: "LiteAVSDK_Player_Premium",
+    professional_premium: "LiteAVSDK_Professional_Player_Premium",
+]
+
+// sub_spec from host pubspec (super_player node), fallback to professional
+def subSpecVersion = getSubSpecFromPubspec()
+if (!liteavSubSpecModules.containsKey(subSpecVersion)) {
+    println("[SuperPlayer] warning: invalid sub_spec '${subSpecVersion}', allowed: ${liteavSubSpecModules.keySet().join(', ')}")
+    subSpecVersion = "professional"
+}
+println("[SuperPlayer] resolved sub_spec: ${subSpecVersion}")
+
+// default version from config.gradle; overridden below when tencent_rtc_sdk is integrated
+def liteavSdkVersion = rootProject.ext.playerSDKVersion
+println("[SuperPlayer] default liteavSdkVersion: ${liteavSdkVersion}")
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation rootProject.ext.liteavSdk
+    // series from sub_spec, version from config.gradle default; both follow rtc_sdk via the strategy below when integrated
+    implementation "com.tencent.liteav:${liteavSubSpecModules[subSpecVersion]}:${liteavSdkVersion}"
     implementation rootProject.ext.compat
+}
+
+// Follow tencent_rtc_sdk (series + version) when integrated. Registered on rootProject so the host app graph is covered too.
+rootProject.allprojects {
+    configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            def liteavMainModules = ["LiteAVSDK_Player", "LiteAVSDK_Professional",
+                                     "LiteAVSDK_Player_Premium", "LiteAVSDK_Professional_Player_Premium"]
+            if (details.requested.group == "com.tencent.liteav" && details.requested.name in liteavMainModules) {
+                def rtcModule = rootProject.ext.find("rtcSdkLiteavSdkModule")
+                def rtcVersion = rootProject.ext.find("rtcSdkLiteavSdkVersion")
+                if (rtcModule != null && rtcModule in liteavMainModules && rtcVersion ==~ /\d+\.\d+\.\d+\.\d+/) {
+                    details.useTarget("com.tencent.liteav:${rtcModule}:${rtcVersion}")
+                } else if (rtcVersion ==~ /\d+\.\d+\.\d+\.\d+/) {
+                    details.useVersion(rtcVersion)
+                }
+            }
+        }
+    }
 }

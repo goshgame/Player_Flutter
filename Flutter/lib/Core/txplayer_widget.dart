@@ -8,6 +8,10 @@ class TXPlayerVideo extends StatefulWidget {
   final FTXAndroidRenderViewType renderViewType;
   final FTXOnRenderViewCreatedListener? onRenderViewCreatedListener;
 
+  /// When enabled, video is rendered directly by the SDK, bypassing the OES pipeline for better performance.
+  /// SurfaceView passthrough does not support rotation/mirror; TextureView passthrough supports rotation via Matrix.
+  final bool androidSurfacePassThrough;
+
   ///
   /// 从 12.4.1 版本开始，移除传入 controller 的绑定纹理方式，该方式由于不可预见问题太多，所以移除。推荐使用 TXPlayerVideo
   /// 的 onRenderViewCreatedListener 回调，在获取到 viewId 后，使用 controller#setPlayerView 进行播放器和纹理的绑定
@@ -34,6 +38,7 @@ class TXPlayerVideo extends StatefulWidget {
   ///
   TXPlayerVideo({
     this.onRenderViewCreatedListener,
+    this.androidSurfacePassThrough = false,
     FTXAndroidRenderViewType? androidRenderType, Key? viewKey})
       : renderViewType = androidRenderType ?? FTXAndroidRenderViewType.TEXTURE_VIEW, super(key: viewKey);
 
@@ -50,11 +55,6 @@ class TXPlayerVideoState extends State<TXPlayerVideo> {
   Key _platformViewKey = UniqueKey();
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
   void didUpdateWidget(covariant TXPlayerVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
    if (oldWidget.renderViewType != widget.renderViewType) {
@@ -64,21 +64,56 @@ class TXPlayerVideoState extends State<TXPlayerVideo> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     if (defaultTargetPlatform == TargetPlatform.android) {
+      final Map<String, dynamic> creationParams = <String, dynamic>{
+        _kFTXAndroidRenderTypeKey: widget.renderViewType.index,
+        _kFTXAndroidSurfacePassThroughKey: widget.androidSurfacePassThrough,
+      };
+
+      // DRM_SURFACE_VIEW 走 HC，保证 SurfaceView 生命周期不受 Flutter 渲染树影响。
+      final Widget platformView = widget.renderViewType ==
+              FTXAndroidRenderViewType.DRM_SURFACE_VIEW
+          ? PlatformViewLink(
+              key: _platformViewKey,
+              viewType: _kFTXPlayerRenderViewType,
+              surfaceFactory: (BuildContext context,
+                  PlatformViewController controller) {
+                return AndroidViewSurface(
+                  controller: controller as AndroidViewController,
+                  gestureRecognizers: const <Factory<
+                      OneSequenceGestureRecognizer>>{},
+                  hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+                );
+              },
+              onCreatePlatformView: (PlatformViewCreationParams params) {
+                return PlatformViewsService.initSurfaceAndroidView(
+                  id: params.id,
+                  viewType: _kFTXPlayerRenderViewType,
+                  layoutDirection: TextDirection.ltr,
+                  creationParams: creationParams,
+                  creationParamsCodec: const StandardMessageCodec(),
+                  onFocus: () => params.onFocusChanged(true),
+                )
+                  ..addOnPlatformViewCreatedListener(
+                      params.onPlatformViewCreated)
+                  ..addOnPlatformViewCreatedListener(_onCreateAndroidView)
+                  ..create();
+              },
+            )
+          : AndroidView(
+              key: _platformViewKey,
+              onPlatformViewCreated: _onCreateAndroidView,
+              viewType: _kFTXPlayerRenderViewType,
+              layoutDirection: TextDirection.ltr,
+              creationParams: creationParams,
+              creationParamsCodec: const StandardMessageCodec(),
+            );
+
       return IgnorePointer(
         ignoring: true,
-        child: AndroidView(
-          key: _platformViewKey,
-            onPlatformViewCreated: _onCreateAndroidView,
-            viewType: _kFTXPlayerRenderViewType,
-          layoutDirection: TextDirection.ltr,
-          creationParams: {_kFTXAndroidRenderTypeKey : widget.renderViewType.index},
-          creationParamsCodec: const StandardMessageCodec(),
-
-        )
+        child: platformView,
       );
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       return IgnorePointer(

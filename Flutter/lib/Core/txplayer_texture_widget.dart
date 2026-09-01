@@ -10,13 +10,13 @@ enum TXPlayerRenderMode {
   platformViewWithTexture,
 }
 
-/// Android 端的 Flutter Texture 后端渲染组件。
+/// Android/iOS 的 Flutter Texture 后端渲染组件。
 ///
 /// - 非侵入式：优先尝试通过 MethodChannel 创建原生 Texture，并将播放器输出绑定到该 Texture 的 Surface。
 /// - 兜底策略：如果 Texture 创建失败或当前平台非 Android，则回退到原有 PlatformView（TXPlayerVideo）。
 /// - 注意：DRM/HDR/PIP 等场景可能不支持 Texture，建议按业务场景控制是否启用。
 class TXPlayerTexture extends StatefulWidget {
-  /// 对应的播放器控制器（仅支持 TXVodPlayerController/直播控制器同理扩展）。
+  /// 对应的播放器控制器（仅支持 TXVodPlayerController）。
   final TXVodPlayerController controller;
 
   /// 回退到 PlatformView 时，Android 渲染类型（默认 TextureView，与原有一致）。

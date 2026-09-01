@@ -737,6 +737,12 @@ extern void SetUpTXFlutterNativeAPIWithSuffix(id<FlutterBinaryMessenger> binaryM
 - (void)setPlayerViewRenderViewId:(NSInteger)renderViewId error:(FlutterError *_Nullable *_Nonnull)error;
 - (void)setRenderModeRenderMode:(NSInteger)renderMode error:(FlutterError *_Nullable *_Nonnull)error;
 - (void)reDrawWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)enableTRTCIsEnabled:(BOOL)isEnabled error:(FlutterError *_Nullable *_Nonnull)error;
+- (void)publishVideoWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)unpublishVideoWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)publishAudioWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)unpublishAudioWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)setAutoPictureInPictureEnabledIsEnabled:(BOOL)isEnabled error:(FlutterError *_Nullable *_Nonnull)error;
 @end
 
 extern void SetUpTXFlutterVodPlayerApi(id<FlutterBinaryMessenger> binaryMessenger, NSObject<TXFlutterVodPlayerApi> *_Nullable api);
@@ -815,6 +821,9 @@ extern void SetUpTXFlutterVodPlayerApiWithSuffix(id<FlutterBinaryMessenger> bina
 - (nullable NSNumber *)enablePictureInPictureMsg:(BoolPlayerMsg *)msg error:(FlutterError *_Nullable *_Nonnull)error;
 - (void)setPlayerViewRenderViewId:(NSInteger)renderViewId error:(FlutterError *_Nullable *_Nonnull)error;
 - (void)setRenderModeRenderMode:(NSInteger)renderMode error:(FlutterError *_Nullable *_Nonnull)error;
+- (void)startLocalRecordingLocalRecordingParams:(NSDictionary<NSString *, id> *)localRecordingParams error:(FlutterError *_Nullable *_Nonnull)error;
+- (void)stopLocalRecordingWithError:(FlutterError *_Nullable *_Nonnull)error;
+- (void)snapshotWithError:(FlutterError *_Nullable *_Nonnull)error;
 @end
 
 extern void SetUpTXFlutterLivePlayerApi(id<FlutterBinaryMessenger> binaryMessenger, NSObject<TXFlutterLivePlayerApi> *_Nullable api);
@@ -902,6 +911,10 @@ extern void SetUpTXFlutterDownloadApiWithSuffix(id<FlutterBinaryMessenger> binar
 - (instancetype)initWithBinaryMessenger:(id<FlutterBinaryMessenger>)binaryMessenger messageChannelSuffix:(nullable NSString *)messageChannelSuffix;
 - (void)onPlayerEventEvent:(NSDictionary<NSString *, id> *)event completion:(void (^)(FlutterError *_Nullable))completion;
 - (void)onNetEventEvent:(NSDictionary<NSString *, id> *)event completion:(void (^)(FlutterError *_Nullable))completion;
+- (void)onLocalRecordBeginCode:(NSInteger)code storagePath:(NSString *)storagePath completion:(void (^)(FlutterError *_Nullable))completion;
+- (void)onLocalRecordingDurationMs:(NSInteger)durationMs storagePath:(NSString *)storagePath completion:(void (^)(FlutterError *_Nullable))completion;
+- (void)onLocalRecordCompleteCode:(NSInteger)code storagePath:(NSString *)storagePath completion:(void (^)(FlutterError *_Nullable))completion;
+- (void)onSnapshotCompleteImageBytes:(nullable FlutterStandardTypedData *)imageBytes completion:(void (^)(FlutterError *_Nullable))completion;
 @end
 
 NS_ASSUME_NONNULL_END

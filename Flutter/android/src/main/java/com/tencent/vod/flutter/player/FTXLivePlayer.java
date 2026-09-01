@@ -39,11 +39,14 @@ import com.tencent.vod.flutter.tools.TXFlutterEngineHolder;
 import com.tencent.vod.flutter.ui.render.FTXRenderView;
 import com.tencent.vod.flutter.ui.render.FTXRenderViewFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 
@@ -133,24 +136,25 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
 
     @Override
     public void destroy() {
+        if (!markDestroyedIfNeeded()) {
+            LiteavLog.w(TAG, "livePlayer destroy ignored, already destroyed, playerId:" + getPlayerId());
+            return;
+        }
         if (mLivePlayer != null) {
             stopPlay(true);
             setRenderView(null);
             mLivePlayer = null;
         }
+        if (null != mObserver && !mObserver.mSnapShortThreadMgr.isTerminated()) {
+            mObserver.mSnapShortThreadMgr.shutdown();
+        }
         mCurRenderView = null;
         mUIHandler.removeCallbacksAndMessages(null);
 
         TXFlutterEngineHolder.getInstance().removeAppLifeListener(mAppLifeListener);
-        if (mPipManager != null) {
-            mPipManager.releaseCallback(getPlayerId());
-        }
-        if (mFlutterPluginBinding != null) {
-            FtxMessages.TXFlutterLivePlayerApi.setUp(
-                    mFlutterPluginBinding.getBinaryMessenger(),
-                    String.valueOf(getPlayerId()),
-                    null);
-        }
+        mPipManager.releaseCallback(getPlayerId());
+        FtxMessages.TXFlutterLivePlayerApi.setUp(mFlutterPluginBinding.getBinaryMessenger(),
+                String.valueOf(getPlayerId()), null);
     }
 
     protected long init(boolean onlyAudio) {
@@ -205,26 +209,26 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         return result;
     }
 
-    boolean isPlayerPlaying() {
+    public boolean isPlayerPlaying() {
         if (mLivePlayer != null) {
             return !mIsPaused;
         }
         return false;
     }
 
-    void pausePlayer() {
+    public void pausePlayer(boolean skipPipNotify) {
         LiteavLog.i(TAG, "called pausePlayer");
         if (mLivePlayer != null) {
             mLivePlayer.pauseVideo();
             mLivePlayer.pauseAudio();
             mIsPaused = true;
-            if (mPipManager.isInPipMode()) {
+            if (!skipPipNotify && mPipManager.isInPipMode()) {
                 mPipManager.notifyCurrentPipPlayerPlayState(getPlayerId(), isPlayerPlaying());
             }
         }
     }
 
-    void resumePlayer() {
+    public void resumePlayer() {
         if (mLivePlayer != null) {
             mLivePlayer.resumeVideo();
             if (!mIsMute) {
@@ -326,7 +330,7 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
 
     @Override
     public void pause(@NonNull PlayerMsg playerMsg) {
-        pausePlayer();
+        pausePlayer(false);
     }
 
     @Override
@@ -399,10 +403,10 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
             } else {
                 LiteavLog.e(TAG, "miss video size when enter PIP");
             }
-            pipResult = mPipManager.enterPip(pipParams, new TXPlayerHolder(mLivePlayer, mIsPaused));
+            pipResult = mPipManager.enterPip(pipParams, new TXPlayerHolder(this, mIsPaused));
             // After the startup is successful, pause the video on the current interface.
             if (pipResult == FTXEvent.NO_ERROR) {
-                pausePlayer();
+                pausePlayer(false);
             }
         }
         return TXCommonUtil.intMsgWith((long) pipResult);
@@ -493,6 +497,32 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         }
     }
 
+    @Override
+    public void startLocalRecording(@NonNull Map<String, Object> localRecordingParams) {
+        V2TXLiveDef.V2TXLiveLocalRecordingParams params = new V2TXLiveDef.V2TXLiveLocalRecordingParams();
+        if (localRecordingParams.containsKey("filePath")) {
+            params.filePath = (String) localRecordingParams.get("filePath");
+        }
+
+        if (localRecordingParams.containsKey("interval")) {
+            Object interval = localRecordingParams.get("interval");
+            if (interval instanceof Number) {
+                params.interval = ((Number) interval).intValue();
+            }
+        }
+        mLivePlayer.startLocalRecording(params);
+    }
+
+    @Override
+    public void stopLocalRecording() {
+        mLivePlayer.stopLocalRecording();
+    }
+
+    @Override
+    public void snapshot() {
+        mLivePlayer.snapshot();
+    }
+
     private void applyRenderMode() {
         if (null != mLivePlayer) {
             if (mCurrentRenderMode == FTXPlayerConstants.FTXRenderMode.ADJUST_RESOLUTION) {
@@ -528,7 +558,7 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
     }
 
     @Override
-    protected V2TXLivePlayer getLivePlayer() {
+    public V2TXLivePlayer getLivePlayer() {
         return mLivePlayer;
     }
 
@@ -538,6 +568,7 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
 
         private final FTXLivePlayer mLivePlayer;
         private final FtxMessages.TXLivePlayerFlutterAPI mLiveFlutterApi;
+        private final ExecutorService mSnapShortThreadMgr = Executors.newSingleThreadExecutor();
 
         public FTXV2LiveObserver(FTXLivePlayer livePlayer) {
             mLivePlayer = livePlayer;
@@ -657,6 +688,20 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         @Override
         public void onSnapshotComplete(V2TXLivePlayer player, Bitmap image) {
             super.onSnapshotComplete(player, image);
+            mSnapShortThreadMgr.execute(new Runnable() {
+                @Override
+                public void run() {
+                    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                    image.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                    byte[] imageBytes = stream.toByteArray();
+                    mLivePlayer.mUIHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            mLiveFlutterApi.onSnapshotComplete(imageBytes, FTXV2LiveObserver.this);
+                        }
+                    });
+                }
+            });
         }
 
         @Override
@@ -691,16 +736,19 @@ public class FTXLivePlayer extends FTXLivePlayerRenderHost implements TXFlutterL
         @Override
         public void onLocalRecordBegin(V2TXLivePlayer player, int code, String storagePath) {
             super.onLocalRecordBegin(player, code, storagePath);
+            mLiveFlutterApi.onLocalRecordBegin((long) code, storagePath, this);
         }
 
         @Override
         public void onLocalRecording(V2TXLivePlayer player, long durationMs, String storagePath) {
             super.onLocalRecording(player, durationMs, storagePath);
+            mLiveFlutterApi.onLocalRecording(durationMs, storagePath, this);
         }
 
         @Override
         public void onLocalRecordComplete(V2TXLivePlayer player, int code, String storagePath) {
             super.onLocalRecordComplete(player, code, storagePath);
+            mLiveFlutterApi.onLocalRecordComplete((long) code, storagePath, this);
         }
 
         @Override

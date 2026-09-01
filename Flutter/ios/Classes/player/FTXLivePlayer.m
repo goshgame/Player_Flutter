@@ -6,6 +6,7 @@
 #import <Flutter/Flutter.h>
 #import <stdatomic.h>
 #import <libkern/OSAtomic.h>
+#import <FTXPiPKit/FTXPipController.h>
 #import "FtxMessages.h"
 #import "TXCommonUtil.h"
 #import "FTXLog.h"
@@ -13,7 +14,6 @@
 #import "FTXV2LiveTools.h"
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
-#import <FTXPiPKit/FTXPipController.h>
 #import "FTXImgTools.h"
 #import "FTXTextureView.h"
 #import "FTXPlayerConstants.h"
@@ -64,48 +64,83 @@ static const int uninitialized = -1;
         self.liveFlutterApi = [[TXLivePlayerFlutterAPI alloc] initWithBinaryMessenger:[registrar messenger] messageChannelSuffix:[self.playerId stringValue]];
         [self createPlayer:onlyAudio];
     }
-    [self.livePlayer setProperty:kV2SetHeaders value:@"" ];
+    [self.livePlayer setProperty:@"setHeaders" value:@"" ];
     return self;
 }
 
-- (void)destory
+- (void)destroy
 {
-    FTXLOGV(@"livePlayer start called destory");
+    FTXLOGV(@"livePlayer start called destroy");
+    if (![self markDestroyedIfNeeded]) {
+        FTXLOGW(@"livePlayer destroy: already destroyed, skip");
+        return;
+    }
+    if ([NSThread isMainThread]) {
+        [self performDestroyOnMainThread];
+    } else {
+        __weak typeof(self) weakSelf = self;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [weakSelf performDestroyOnMainThread];
+        });
+    }
+}
+
+- (void)performDestroyOnMainThread {
     [self stopPlay];
     if (nil != self.livePlayer) {
-        [self.livePlayer enableObserveVideoFrame:NO pixelFormat:V2TXLivePixelFormatBGRA32 bufferType:V2TXLiveBufferTypePixelBuffer];
-        [self setRenderView:nil];
+        [self.livePlayer enableObserveVideoFrame:NO
+                                      pixelFormat:V2TXLivePixelFormatBGRA32
+                                       bufferType:V2TXLiveBufferTypePixelBuffer];
+        [self.livePlayer setRenderView:nil];
+        self.renderControl = nil;
         [self.livePlayer setObserver:nil];
+        self.livePlayer = nil;
+    }
+    self.curRenderView = nil;
+
+    if ([FTXPipController shareInstance].playerDelegate == self) {
+        [FTXPipController shareInstance].playerDelegate = nil;
+    }
+    if ([FTXPipController shareInstance].pipDelegate == self) {
+        [FTXPipController shareInstance].pipDelegate = nil;
+    }
+
+    if (_registrar) {
+        SetUpTXFlutterLivePlayerApiWithSuffix([_registrar messenger], nil, [self.playerId stringValue]);
+    }
+}
+
+- (void)performDestroyOnCurrentThread {
+    if (![self markDestroyedIfNeeded]) {
+        return;
+    }
+    if (nil != self.livePlayer) {
+        [self.livePlayer setObserver:nil];
+        self.livePlayer = nil;
     }
     self.curRenderView = nil;
 }
 
 - (void)notifyAppTerminate:(UIApplication *)application {
-    if (!_isTerminate) {
+    if (!_isTerminate && !self.isDestroyed) {
         FTXLOGW(@"livePlayer is called notifyAppTerminate terminate");
-        [self notifyPlayerTerminate];
+        _isTerminate = YES;
+        [self destroy];
     }
 }
 
 - (void)dealloc
 {
-    if (!_isTerminate) {
-        FTXLOGW(@"livePlayer is called delloc terminate");
-        [self notifyPlayerTerminate];
+    if (!_isTerminate && !self.isDestroyed) {
+        FTXLOGW(@"livePlayer is called dealloc terminate");
+        [self performDestroyOnCurrentThread];
     }
 }
 
 - (void)notifyPlayerTerminate {
     FTXLOGW(@"livePlayer notifyPlayerTerminate");
-    if (nil != self.livePlayer) {
-        [self.livePlayer enableObserveVideoFrame:NO pixelFormat:V2TXLivePixelFormatBGRA32 bufferType:V2TXLiveBufferTypePixelBuffer];
-        [self setRenderView:nil];
-        [self.livePlayer setObserver:nil];
-    }
-    self.curRenderView = nil;
     _isTerminate = YES;
-    [self stopPlay];
-    self.livePlayer = nil;
+    [self destroy];
 }
 
 - (void)setupPlayerWithBool:(BOOL)onlyAudio
@@ -147,7 +182,7 @@ static const int uninitialized = -1;
     } else {
         imagePath = [[NSBundle mainBundle] pathForResource:@"pictureInpicture_en" ofType:@"jpg"];
     }
-    
+
     UIImage *image = [UIImage imageWithContentsOfFile:imagePath];
     // must create new obj when evey called
     return [FTXImgTools CVPixelBufferRefFromUiImage:image];
@@ -354,10 +389,10 @@ static const int uninitialized = -1;
                                         maxTime:[msg.maxAutoAdjustCacheTime floatValue]];
             }
             if (msg.connectRetryCount) {
-                [self.livePlayer setProperty:kV2MaxNumberOfReconnection value:msg.connectRetryCount];
+                [self.livePlayer setProperty:@"maxNumberOfReconnection" value:msg.connectRetryCount];
             }
             if (msg.connectRetryInterval) {
-                [self.livePlayer setProperty:kV2SecondsBetweenReconnection value:msg.connectRetryInterval];
+                [self.livePlayer setProperty:@"secondsBetweenReconnection" value:msg.connectRetryInterval];
             }
         }
     }
@@ -472,7 +507,7 @@ static const int uninitialized = -1;
 
 - (nullable BoolMsg *)stopIsNeedClear:(nonnull BoolPlayerMsg *)isNeedClear error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     if (self.livePlayer) {
-        [self.livePlayer setProperty:kV2ClearLastImage value:@(isNeedClear.value.boolValue)];
+        [self.livePlayer setProperty:@"clearLastImage" value:@(isNeedClear.value.boolValue)];
     }
     BOOL r = [self stopPlay];
     return [TXCommonUtil boolMsgWith:r];
@@ -488,7 +523,7 @@ static const int uninitialized = -1;
 }
 
 - (NSNumber *)enableReceiveSeiMessagePlayerMsg:(PlayerMsg *)playerMsg isEnabled:(BOOL)isEnabled payloadType:(NSInteger)payloadType error:(FlutterError * _Nullable __autoreleasing *)error {
-    
+
     if (self.livePlayer) {
         int result = (int)[self.livePlayer enableReceiveSeiMessage:isEnabled payloadType:(int)payloadType];
         return @(result);
@@ -497,7 +532,7 @@ static const int uninitialized = -1;
 }
 
 
-- (nullable ListMsg *)getSupportedBitratePlayerMsg:(nonnull PlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error { 
+- (nullable ListMsg *)getSupportedBitratePlayerMsg:(nonnull PlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     if (self.livePlayer) {
         NSArray *result = [self.livePlayer getStreamList];
         return [TXCommonUtil listMsgWith:result];
@@ -515,7 +550,7 @@ static const int uninitialized = -1;
 }
 
 
-- (nullable NSNumber *)setPropertyPlayerMsg:(nonnull PlayerMsg *)playerMsg key:(nonnull NSString *)key value:(nonnull id)value error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error { 
+- (nullable NSNumber *)setPropertyPlayerMsg:(nonnull PlayerMsg *)playerMsg key:(nonnull NSString *)key value:(nonnull id)value error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     if (self.livePlayer) {
         int result = (int)[self.livePlayer setProperty:key value:value];
         return @(result);
@@ -530,13 +565,17 @@ static const int uninitialized = -1;
     }
 }
 
-- (nullable BoolMsg *)startLivePlayPlayerMsg:(nonnull StringPlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error { 
+- (nullable BoolMsg *)startLivePlayPlayerMsg:(nonnull StringPlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     int r = [self startLivePlay:playerMsg.value];
     return [TXCommonUtil boolMsgWith:r];
 }
 
 - (void)setPlayerViewRenderViewId:(NSInteger)renderViewId error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     FTXLOGI(@"setPlayerView, renderViewId:%ld", renderViewId);
+    if (self.isDestroyed) {
+        FTXLOGW(@"livePlayer setPlayerView called after destroyed, ignore");
+        return;
+    }
     FTXRenderView *renderView = [self.renderViewFactory findViewById:renderViewId];
     if (nil != renderView) {
         self.curRenderView = renderView;
@@ -549,6 +588,10 @@ static const int uninitialized = -1;
 }
 
 - (void)setRenderView:(FTXTextureView *)renderView {
+    if (self.isDestroyed) {
+        FTXLOGW(@"livePlayer setRenderView called after destroyed, ignore");
+        return;
+    }
     if (nil != self.livePlayer) {
         if (nil != renderView) {
             [self.livePlayer setRenderView:renderView];
@@ -562,6 +605,28 @@ static const int uninitialized = -1;
     if (self.renderMode != renderMode) {
         [self setRenderMode:renderMode];
     }
+}
+
+- (void)startLocalRecordingLocalRecordingParams:(NSDictionary<NSString *,id> *)localRecordingParams error:(FlutterError * _Nullable __autoreleasing *)error {
+    V2TXLiveLocalRecordingParams *params = [[V2TXLiveLocalRecordingParams alloc] init];
+
+    if (localRecordingParams[@"filePath"] && [localRecordingParams[@"filePath"] isKindOfClass:[NSString class]]) {
+        params.filePath = localRecordingParams[@"filePath"];
+    }
+
+    if (localRecordingParams[@"interval"] && [localRecordingParams[@"interval"] isKindOfClass:[NSNumber class]]) {
+        params.interval = [localRecordingParams[@"interval"] intValue];
+    }
+
+    [self.livePlayer startLocalRecording:params];
+}
+
+- (void)stopLocalRecordingWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    [self.livePlayer stopLocalRecording];
+}
+
+- (void)snapshotWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    [self.livePlayer snapshot];
 }
 
 
@@ -705,7 +770,7 @@ static const int uninitialized = -1;
  * @note  调用 {@link enableVolumeEvaluation} 开启播放音量大小提示之后，会收到这个回调通知。
  */
 - (void)onPlayoutVolumeUpdate:(id<V2TXLivePlayer>)player volume:(NSInteger)volume {
-    
+
 }
 
 /**
@@ -731,7 +796,24 @@ static const int uninitialized = -1;
  * @param image  已截取的视频画面。
  */
 - (void)onSnapshotComplete:(id<V2TXLivePlayer>)player image:(nullable TXImage *)image {
-    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+           NSData *imageData = nil;
+           if (image) {
+               imageData = UIImageJPEGRepresentation(image, 0.9);
+           }
+
+           dispatch_async(dispatch_get_main_queue(), ^{
+               FlutterStandardTypedData *imageByteData = nil;
+               if (imageData) {
+                   imageByteData = [FlutterStandardTypedData typedDataWithBytes:imageData];
+               }
+               [self.liveFlutterApi onSnapshotCompleteImageBytes:imageByteData completion:^(FlutterError * _Nullable error) {
+                   if (nil != error) {
+                       FTXLOGE(@"callback message error:%@", error);
+                   }
+               }];
+           });
+       });
 }
 
 /**
@@ -758,7 +840,7 @@ static const int uninitialized = -1;
  * @note  需要您调用 {@link enableObserveAudioFrame} 开启回调开关。请在当前回调中使用 audioFrame 的 data。
  */
 - (void)onPlayoutAudioFrame:(id<V2TXLivePlayer>)player frame:(V2TXLiveAudioFrame *)audioFrame {
-    
+
 }
 
 /**
@@ -807,9 +889,9 @@ static const int uninitialized = -1;
  * @param state     画中画的状态。
  * @param extraInfo 扩展信息。
  */
-- (void)onPictureInPictureStateUpdate:(id<V2TXLivePlayer>)player state:(V2TXLivePictureInPictureState)state 
+- (void)onPictureInPictureStateUpdate:(id<V2TXLivePlayer>)player state:(V2TXLivePictureInPictureState)state
                               message:(NSString *)msg extraInfo:(NSDictionary *)extraInfo {
-    
+
 }
 
 /**
@@ -827,7 +909,11 @@ static const int uninitialized = -1;
  * @param storagePath 录制的文件地址。
  */
 - (void)onLocalRecordBegin:(id<V2TXLivePlayer>)player errCode:(NSInteger)errCode storagePath:(NSString *)storagePath {
-    
+    [self.liveFlutterApi onLocalRecordBeginCode:errCode storagePath:storagePath completion:^(FlutterError * _Nullable error) {
+        if (nil != error) {
+            FTXLOGE(@"callback message error:%@", error);
+        }
+    }];
 }
 
 /**
@@ -840,7 +926,11 @@ static const int uninitialized = -1;
  * @param storagePath  录制的文件地址。
  */
 - (void)onLocalRecording:(id<V2TXLivePlayer>)player durationMs:(NSInteger)durationMs storagePath:(NSString *)storagePath {
-    
+    [self.liveFlutterApi onLocalRecordingDurationMs:durationMs storagePath:storagePath completion:^(FlutterError * _Nullable error) {
+        if (nil != error) {
+            FTXLOGE(@"callback message error:%@", error);
+        }
+    }];
 }
 
 /**
@@ -856,11 +946,16 @@ static const int uninitialized = -1;
  * @param storagePath 录制的文件地址。
  */
 - (void)onLocalRecordComplete:(id<V2TXLivePlayer>)player errCode:(NSInteger)errCode storagePath:(NSString *)storagePath {
+    [self.liveFlutterApi onLocalRecordCompleteCode:errCode storagePath:storagePath completion:^(FlutterError * _Nullable error) {
+        if (nil != error) {
+            FTXLOGE(@"callback message error:%@", error);
+        }
+    }];
 }
 
 #pragma mark - FTXLivePipDelegate
 
-- (void)pictureInPictureErrorDidOccur:(FTX_LIVE_PIP_ERROR)errorStatus { 
+- (void)pictureInPictureErrorDidOccur:(FTX_LIVE_PIP_ERROR)errorStatus {
     NSInteger type = errorStatus;
     switch (errorStatus) {
         case FTX_VOD_PLAYER_PIP_ERROR_TYPE_NONE:
@@ -912,14 +1007,14 @@ static const int uninitialized = -1;
             [self.delegate onPlayerPipStateDidStart];
         }
     }
-    
+
     if (pipState == TX_VOD_PLAYER_PIP_STATE_WILL_STOP) {
         self.isStartEnterPipMode = NO;
         if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateWillStop)]) {
             [self.delegate onPlayerPipStateWillStop];
         }
     }
-    
+
     if (pipState == TX_VOD_PLAYER_PIP_STATE_DID_STOP) {
         self.hasEnteredPipMode = NO;
         [[FTXPipController shareInstance] exitPip];
@@ -933,7 +1028,7 @@ static const int uninitialized = -1;
             });
         }
     }
-    
+
     if (pipState == TX_VOD_PLAYER_PIP_STATE_RESTORE_UI) {
         self.restoreUI = YES;
         dispatch_async(dispatch_get_main_queue(), ^{

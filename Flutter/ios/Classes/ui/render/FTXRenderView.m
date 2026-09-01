@@ -44,8 +44,17 @@
     }
 }
 
+- (void)teardown {
+    if (self.mBasePlayer != nil) {
+        [self.mBasePlayer setRenderView:nil];
+        [self.videoView bindPlayer:nil];
+        self.mBasePlayer = nil;
+    }
+}
+
 - (void)dealloc
 {
+    [self teardown];
     FTXLOGW(@"render view is dealloc, id:%lld", self.mViewId);
 }
 

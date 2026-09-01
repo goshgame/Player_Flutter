@@ -8,10 +8,13 @@ import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.view.Choreographer;
 import android.view.Surface;
 
 import com.tencent.liteav.base.util.LiteavLog;
 import com.tencent.vod.flutter.common.FTXPlayerConstants;
+import com.tencent.vod.flutter.player.render.FTXPixelFrame;
+import com.tencent.vod.flutter.player.render.trtc.FVodTRTCHelper;
 
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -22,8 +25,11 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
 
     private static final long FRAME_WAIT_TIME = 5000;
     private static final int FPS_DEFAULT = 30;
-    // min refresh count for obtain new img
-    private static final int RE_DRAW_COUNT = 30;
+    // 与硬件 VSync 对齐时，覆盖三缓冲翻转 + Surface 重建竞态窗口所需的最小帧数
+    private static final int REFRESH_FRAME_COUNT = 3;
+
+    // EGL_OPENGL_ES3_BIT_KHR, not exposed by EGL14
+    private static final int EGL_OPENGL_ES3_BIT_KHR = 0x0040;
 
     private SurfaceTexture mSurfaceTexture;
     private FTXTextureRender mTextureRender;
@@ -58,6 +64,45 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
     private boolean isReleased = false;
     private boolean mIsFirstFrame = false;
 
+    // 3 = ES3, 2 = ES2, 0 = uninitialized
+    private volatile int mActiveGLESMajor = 0;
+
+    // 渲染线程上的 Choreographer，用于把刷新动作对齐到硬件 VSync 信号
+    private Choreographer mChoreographer;
+    // 剩余需要刷新的 VSync 帧数（仅在渲染线程读写，无需加锁）
+    private int mRefreshFramesLeft = 0;
+
+    /**
+     * 与硬件 VSync 信号对齐的自调度回调。
+     * 每收到一个 VSync 信号绘制一帧，绘制完后判断是否需要继续提交下一帧。
+     * 该回调全生命周期只创建一次，避免重复对象分配。
+     */
+    private final Choreographer.FrameCallback mRefreshFrameCallback = new Choreographer.FrameCallback() {
+        @Override
+        public void doFrame(long frameTimeNanos) {
+            mLock.lock();
+            try {
+                startDrawSurface(false);
+            } finally {
+                mLock.unlock();
+            }
+            mRefreshFramesLeft--;
+            if (mRefreshFramesLeft > 0 && mChoreographer != null) {
+                mChoreographer.postFrameCallback(this);
+            }
+        }
+    };
+
+    private FVodTRTCHelper mTRTCHelper;
+    private boolean mEnableFrameCopy = false;
+    private OnFrameCopyListener mFrameCopyListener;
+    private FTXPixelFrame mCachedPixelFrame;  // 复用的帧对象，避免频繁创建
+
+    public interface OnFrameCopyListener {
+
+        void onFrameCopied(FTXPixelFrame frame);
+    }
+
     public FTXEGLRender(int width, int height) {
         this(width, height, FPS_DEFAULT);
     }
@@ -84,18 +129,18 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
                 public void run() {
                     if (!mIsFirstFrame) {
                         mLock.lock();
-                        startDrawSurface();
+                        startDrawSurface(true);
                         mLock.unlock();
                     } else {
                         mIsFirstFrame = false;
-                        refreshRender();
+                        refreshRender(true);
                     }
                 }
             });
         }
     }
 
-    private synchronized void startDrawSurface() {
+    private synchronized void startDrawSurface(boolean isNewFrame) {
         try {
             if (!mStart) {
                 LiteavLog.e(TAG, "draw thread is dead");
@@ -110,19 +155,30 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
             }
 
             mCurrentTime = System.currentTimeMillis();
-            mSurfaceTexture.updateTexImage();
-            drawImage();
+
+            if (isNewFrame) {
+                try {
+                    mSurfaceTexture.updateTexImage();
+                } catch (Exception e) {
+                    LiteavLog.e(TAG, "updateTexImage failed: " + e.getMessage());
+                    return;
+                }
+            }
+
+            mTextureRender.drawFrame();
             swapBuffers();
             mPreTime = mCurrentTime;
+
+            // 如果启用了帧复制，在绘制前复制一份纹理
+            if (mEnableFrameCopy) {
+                copyFrameForTRTC();
+            }
+
         } catch (Exception e) {
             LiteavLog.e(TAG, "startDrawSurface error: " + e);
         } finally {
             restoreEglEnvironment();
         }
-    }
-
-    public void drawImage() {
-        mTextureRender.drawFrame();
     }
 
     public boolean initOpengl(Surface surface, boolean needClearOld) {
@@ -198,15 +254,35 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         }
     }
 
-    public void setViewPortSize(int width, int height) {
-        mViewWidth = width;
-        mViewHeight = height;
-        if (null != mSurfaceTexture) {
-            mSurfaceTexture.setDefaultBufferSize(width, height);
+    public void setViewPortSize(final int width, final int height) {
+        // 渲染未启动时的 fallback：直接更新堆变量，后续 startRender 会使用该尺寸
+        if (null == mDrawHandler) {
+            mViewWidth = width;
+            mViewHeight = height;
+            if (null != mTextureRender) {
+                mTextureRender.setViewPortSize(width, height);
+            }
+            return;
         }
-        if (null != mTextureRender) {
-            mTextureRender.setViewPortSize(width, height);
-        }
+        // 切到渲染线程串行执行，避免与 drawFrame 发生数据竞争导致的画面几何错位
+        mDrawHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                mLock.lock();
+                try {
+                    mViewWidth = width;
+                    mViewHeight = height;
+                    if (null != mSurfaceTexture) {
+                        mSurfaceTexture.setDefaultBufferSize(width, height);
+                    }
+                    if (null != mTextureRender) {
+                        mTextureRender.setViewPortSize(width, height);
+                    }
+                } finally {
+                    mLock.unlock();
+                }
+            }
+        });
     }
 
     private boolean eglSetup(Surface surface) {
@@ -221,43 +297,43 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
             checkEglError("unable to initialize EGL10");
             return false;
         }
-        // Configure EGL for pbuffer and OpenGL ES 2.0, 24-bit RGB.
-        int[] attribList = new int[]{
-                EGL14.EGL_RED_SIZE, 8,
-                EGL14.EGL_GREEN_SIZE, 8,
-                EGL14.EGL_BLUE_SIZE, 8,
-                EGL14.EGL_ALPHA_SIZE, 8,
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
-                EGL14.EGL_NONE
-        };
 
-        int[] numEglConfigs = new int[1];
-        EGLConfig[] eglConfigs = new EGLConfig[1];
-        if (!EGL14.eglChooseConfig(mEGLDisplay, attribList, 0, eglConfigs, 0,
-                eglConfigs.length, numEglConfigs, 0)) {
-            checkEglError("eglChooseConfig error");
-            return false;
+        // Try GLES 3.0 first, fall back to GLES 2.0.
+        EGLConfig pickedConfig = null;
+        EGLContext pickedContext = EGL14.EGL_NO_CONTEXT;
+        EGLConfig configEs3 = chooseEGLConfig(EGL_OPENGL_ES3_BIT_KHR);
+        if (configEs3 != null) {
+            EGLContext ctx = tryCreateContext(configEs3, 3);
+            if (ctx != EGL14.EGL_NO_CONTEXT) {
+                pickedConfig = configEs3;
+                pickedContext = ctx;
+                mActiveGLESMajor = 3;
+                LiteavLog.i(TAG, "EGLContext created with GLES 3.0");
+            }
         }
-        // Configure context for OpenGL ES 2.0.
-        //6、创建 EglContext
-        int[] attrib_list = new int[]{
-                EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
-                EGL14.EGL_NONE
-        };
-
-        mEGLContextEncoder = EGL14.eglCreateContext(mEGLDisplay, eglConfigs[0], EGL14.EGL_NO_CONTEXT,
-                attrib_list, 0);
-        checkEglError("eglCreateContext", false);
-        if (mEGLContextEncoder == EGL14.EGL_NO_CONTEXT) {
-            LiteavLog.e(TAG, "null context2");
-            return false;
+        if (pickedContext == EGL14.EGL_NO_CONTEXT) {
+            EGL14.eglGetError();
+            EGLConfig configEs2 = chooseEGLConfig(EGL14.EGL_OPENGL_ES2_BIT);
+            if (configEs2 == null) {
+                checkEglError("eglChooseConfig error");
+                return false;
+            }
+            EGLContext ctx = tryCreateContext(configEs2, 2);
+            if (ctx == EGL14.EGL_NO_CONTEXT) {
+                LiteavLog.e(TAG, "create GLES2 context failed");
+                return false;
+            }
+            pickedConfig = configEs2;
+            pickedContext = ctx;
+            mActiveGLESMajor = 2;
+            LiteavLog.i(TAG, "EGLContext created with GLES 2.0 (fallback)");
         }
+        mEGLContextEncoder = pickedContext;
 
         int[] surfaceAttribs2 = {
                 EGL14.EGL_NONE
         };
-        mEGLSurfaceEncoder = EGL14.eglCreateWindowSurface(mEGLDisplay, eglConfigs[0], surface,
+        mEGLSurfaceEncoder = EGL14.eglCreateWindowSurface(mEGLDisplay, pickedConfig, surface,
                 surfaceAttribs2, 0);   //creates an EGL window surface and returns its handle
         checkEglError("eglCreateWindowSurface", false);
 
@@ -267,6 +343,44 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         }
         mOutPutSurface = surface;
         return true;
+    }
+
+    private EGLConfig chooseEGLConfig(int renderableType) {
+        int[] attribList = new int[]{
+                EGL14.EGL_RED_SIZE, 8,
+                EGL14.EGL_GREEN_SIZE, 8,
+                EGL14.EGL_BLUE_SIZE, 8,
+                EGL14.EGL_ALPHA_SIZE, 8,
+                EGL14.EGL_RENDERABLE_TYPE, renderableType,
+                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+                EGL14.EGL_NONE
+        };
+        EGLConfig[] configs = new EGLConfig[1];
+        int[] num = new int[1];
+        boolean ok = EGL14.eglChooseConfig(mEGLDisplay, attribList, 0,
+                configs, 0, configs.length, num, 0);
+        if (!ok || num[0] <= 0 || configs[0] == null) {
+            EGL14.eglGetError();
+            return null;
+        }
+        return configs[0];
+    }
+
+    private EGLContext tryCreateContext(EGLConfig config, int glesMajor) {
+        int[] attribList = {
+                EGL14.EGL_CONTEXT_CLIENT_VERSION, glesMajor,
+                EGL14.EGL_NONE
+        };
+        EGLContext ctx = EGL14.eglCreateContext(mEGLDisplay, config,
+                EGL14.EGL_NO_CONTEXT, attribList, 0);
+        if (ctx == EGL14.EGL_NO_CONTEXT) {
+            EGL14.eglGetError();
+        }
+        return ctx;
+    }
+
+    public boolean isGLES3Available() {
+        return mActiveGLESMajor >= 3;
     }
 
     private boolean checkEglError(String msg) {
@@ -401,6 +515,7 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         mEGLDisplay = EGL14.EGL_NO_DISPLAY;
         mEGLSurfaceEncoder = EGL14.EGL_NO_SURFACE;
         mEGLContextEncoder = EGL14.EGL_NO_CONTEXT;
+        mActiveGLESMajor = 0;
     }
 
     private void eglUninstall(boolean needReleaseDecodeSurface) {
@@ -411,10 +526,22 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         if (mTextureRender != null) {
             mTextureRender.deleteTexture();
         }
+
+        if (mTRTCHelper != null) {
+            mTRTCHelper.release();
+            mTRTCHelper = null;
+        }
+
         releaseEgl();
 
         if (needReleaseDecodeSurface && mInputSurface != null) {
             mInputSurface.release();
+            mInputSurface = null;
+        }
+
+        if (mSurfaceTexture != null) {
+            mSurfaceTexture.release();
+            mSurfaceTexture = null;
         }
     }
 
@@ -428,21 +555,46 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         mDrawHandlerThread.start();
         mDrawHandler = new Handler(mDrawHandlerThread.getLooper());
         mStart = true;
+
+        // 在渲染线程上初始化 Choreographer，使 VSync 回调直接派发到本线程，零线程切换
+        mDrawHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                mChoreographer = Choreographer.getInstance();
+            }
+        });
     }
 
     public void refreshRender() {
-        if (null != mDrawHandler) {
-            mDrawHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    mLock.lock();
-                    for (int i = 0; i < RE_DRAW_COUNT; i++) {
-                        startDrawSurface();
-                    }
-                    mLock.unlock();
-                }
-            });
+        refreshRender(false);
+    }
+
+    public void refreshRender(final boolean isForcePullFrame) {
+        if (null == mDrawHandler) {
+            return;
         }
+        mDrawHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                // 强制拉帧：立即同步执行一次 updateTexImage，保证首帧/seek 后画面及时更新
+                if (isForcePullFrame) {
+                    mLock.lock();
+                    try {
+                        startDrawSurface(true);
+                    } finally {
+                        mLock.unlock();
+                    }
+                }
+
+                // 防抖：序列进行中则只续命剩余帧数，回调实例永远只有一个
+                boolean needSchedule = (mRefreshFramesLeft <= 0);
+                mRefreshFramesLeft = REFRESH_FRAME_COUNT;
+
+                if (needSchedule && mChoreographer != null) {
+                    mChoreographer.postFrameCallback(mRefreshFrameCallback);
+                }
+            }
+        });
     }
 
     public synchronized void resumeRender() {
@@ -469,6 +621,11 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         LiteavLog.i(TAG, "stopRender");
         // unLock render thread
         mStart = false;
+        mRefreshFramesLeft = 0;
+        if (mChoreographer != null) {
+            mChoreographer.removeFrameCallback(mRefreshFrameCallback);
+            mChoreographer = null;
+        }
         mRotation = 0;
         if (null != mTextureRender) {
             mTextureRender.setRotationAngle(0);
@@ -480,6 +637,10 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
             mDrawHandlerThread.quitSafely();
             mDrawHandler = null;
         }
+
+        mEnableFrameCopy = false;
+        mFrameCopyListener = null;
+        mCachedPixelFrame = null;
 
         if (!contextCompare) {
             LiteavLog.d(TAG, "restoreEglEnvironment");
@@ -498,4 +659,54 @@ public class FTXEGLRender implements SurfaceTexture.OnFrameAvailableListener {
         }
     }
 
+    public void setEnableFrameCopy(boolean enable, OnFrameCopyListener listener) {
+        mEnableFrameCopy = enable;
+        mFrameCopyListener = listener;
+    }
+
+    /**
+     * 复制当前帧用于 TRTC 推流
+     */
+    private void copyFrameForTRTC() {
+        if (!mEnableFrameCopy || mTextureRender == null) {
+            return;
+        }
+
+        int textureId = mTextureRender.getTextureID();
+        if (textureId <= 0) {
+            return;
+        }
+
+        if (mTRTCHelper == null) {
+            mTRTCHelper = new FVodTRTCHelper();
+        }
+
+        int copyWidth = mWidth;
+        int copyHeight = mHeight;
+        if (copyWidth <= 0 || copyHeight <= 0) {
+            return;
+        }
+
+        if (!mTRTCHelper.isInitialized()
+                || mTRTCHelper.getTextureWidth() != copyWidth
+                || mTRTCHelper.getTextureHeight() != copyHeight) {
+            if (!mTRTCHelper.init(copyWidth, copyHeight)) {
+                LiteavLog.e(TAG, "Failed to init TRTCHelper");
+                return;
+            }
+        }
+
+        int copyTextureId = mTRTCHelper.copyFrame(textureId);
+        if (copyTextureId > 0 && mFrameCopyListener != null) {
+            // 单线程模型使用成员变量
+            if (mCachedPixelFrame == null) {
+                mCachedPixelFrame = new FTXPixelFrame();
+            }
+            mCachedPixelFrame.setTextureId(copyTextureId);
+            mCachedPixelFrame.setWidth(copyWidth);
+            mCachedPixelFrame.setHeight(copyHeight);
+            mCachedPixelFrame.setGLContext(mEGLContextEncoder);
+            mFrameCopyListener.onFrameCopied(mCachedPixelFrame);
+        }
+    }
 }

@@ -16,7 +16,7 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
   Map<int, _PreloadListener> _fileIdBeforeStartListeners = {};
   FTXDownlodOnStateChangeListener? _downlodOnStateChangeListener;
   FTXDownlodOnErrorListener? _downlodOnErrorListener;
-  AtomicInt _atomicPreloadId = AtomicInt(0);
+  int _preloadTaskIdCounter = 0;
 
   static TXVodDownloadController _sharedInstance() {
     if (_instance == null) {
@@ -50,13 +50,15 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
     final String playUrl,
     final double preloadSizeMB,
     final int preferredResolution, {
+    int encryptedMp4Level = TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE,
     FTXPredownlodOnCompleteListener? onCompleteListener,
     FTXPredownlodOnErrorListener? onErrorListener,
   }) async {
     IntMsg msg = await _api.startPreLoad(PreLoadMsg()
       ..playUrl = playUrl
       ..preloadSizeMB = preloadSizeMB
-      ..preferredResolution = preferredResolution);
+      ..preferredResolution = preferredResolution
+      ..encryptedMp4Level = encryptedMp4Level);
     int taskId = msg.value ?? -1;
     if (taskId >= 0) {
       _preloadListeners[taskId] = _PreloadListener()
@@ -74,7 +76,7 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
     FTXPredownlodOnErrorListener? onErrorListener,
     FTXPredownlodOnStartListener? onStartListener,
   }) async {
-    int tmpPreloadTaskId = await _atomicPreloadId.incrementAndGet();
+    final int tmpPreloadTaskId = ++_preloadTaskIdCounter;
     await _api.startPreLoadByParams(PreLoadInfoMsg()
       ..tmpPreloadTaskId = tmpPreloadTaskId
       ..playUrl = txPlayInfoParams.url
@@ -83,7 +85,8 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
       ..pSign = txPlayInfoParams.psign
       ..preloadSizeMB = preloadSizeMB
       ..preferredResolution = preferredResolution
-      ..httpHeader = txPlayInfoParams.httpHeader);
+      ..httpHeader = txPlayInfoParams.httpHeader
+      ..encryptedMp4Level = txPlayInfoParams.encryptedMp4Level);
     _fileIdBeforeStartListeners[tmpPreloadTaskId] = _PreloadListener()
       ..onCompleteListener = onCompleteListener
       ..onErrorListener = onErrorListener
@@ -204,6 +207,7 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
     }
     mediaInfo.speed = map["speed"];
     mediaInfo.isResourceBroken = map["isResourceBroken"];
+    mediaInfo.encryptedMp4Level = map["encryptedMp4Level"] ?? TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE;
 
     return mediaInfo;
   }
@@ -219,6 +223,8 @@ class TXVodDownloadController implements TXDownloadFlutterAPI {
     mediaInfo.size = msg.size;
     mediaInfo.downloadSize = msg.downloadSize;
     mediaInfo.url = msg.url;
+    mediaInfo.isResourceBroken = msg.isResourceBroken;
+    mediaInfo.encryptedMp4Level = msg.encryptedMp4Level ?? TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE;
     if (null != msg.appId) {
       TXVodDownloadDataSource dataSource = TXVodDownloadDataSource();
       dataSource.appId = msg.appId;
@@ -309,24 +315,4 @@ class _PreloadListener {
   FTXPredownlodOnErrorListener? onErrorListener;
   FTXPredownlodOnStartListener? onStartListener;
   _PreloadListener({this.onCompleteListener, this.onErrorListener, this.onStartListener});
-}
-
-class AtomicInt {
-  int _value = 0;
-  final _lock = Lock();
-
-  AtomicInt(this._value);
-
-  Future<int> get() async {
-    return await _lock.synchronized(() async {
-      return _value;
-    });
-  }
-
-  Future<int> incrementAndGet() async {
-    return await _lock.synchronized(() async {
-      _value++;
-      return _value;
-    });
-  }
 }

@@ -23,7 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)notifyAppTerminate:(UIApplication *)application;
 
 /// 启用/关闭外部纹理渲染（用于 Flutter Texture）
-/// 仅支持 VOD，且不支持 DRM/HDR/PIP/字幕内嵌
+/// 仅支持 VOD；DRM、HDR 和内嵌字幕场景应继续使用 PlatformView
 - (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef _Nonnull pixelBuffer))consumer renderWithTexture:(BOOL)renderWithTexture;
 - (void)disableExternalTexture;
 

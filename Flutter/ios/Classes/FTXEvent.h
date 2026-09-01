@@ -24,6 +24,36 @@
 
 // PIP error event code.
 #define NO_ERROR                             0     ///<   No error. 无错误
+#ifndef ERROR_IOS_PIP_DEVICE_NOT_SUPPORT
+#define ERROR_IOS_PIP_DEVICE_NOT_SUPPORT     -104
+#endif
+#ifndef ERROR_IOS_PIP_PLAYER_NOT_SUPPORT
+#define ERROR_IOS_PIP_PLAYER_NOT_SUPPORT     -105
+#endif
+#ifndef ERROR_IOS_PIP_VIDEO_NOT_SUPPORT
+#define ERROR_IOS_PIP_VIDEO_NOT_SUPPORT      -106
+#endif
+#ifndef ERROR_IOS_PIP_IS_NOT_POSSIBLE
+#define ERROR_IOS_PIP_IS_NOT_POSSIBLE        -107
+#endif
+#ifndef ERROR_IOS_PIP_FROM_SYSTEM
+#define ERROR_IOS_PIP_FROM_SYSTEM            -108
+#endif
+#ifndef ERROR_IOS_PIP_PLAYER_NOT_EXIST
+#define ERROR_IOS_PIP_PLAYER_NOT_EXIST       -109
+#endif
+#ifndef ERROR_IOS_PIP_IS_RUNNING
+#define ERROR_IOS_PIP_IS_RUNNING             -110
+#endif
+#ifndef ERROR_IOS_PIP_NOT_RUNNING
+#define ERROR_IOS_PIP_NOT_RUNNING            -111
+#endif
+#ifndef ERROR_IOS_PIP_START_TIME_OUT
+#define ERROR_IOS_PIP_START_TIME_OUT         -112
+#endif
+#ifndef ERROR_PIP_AUTH_DENIED
+#define ERROR_PIP_AUTH_DENIED                -201
+#endif
 
 // Video pre-download completed.
 // 视频预下载完成

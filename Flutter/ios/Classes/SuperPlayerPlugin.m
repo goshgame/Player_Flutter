@@ -11,41 +11,28 @@
 #import "FtxMessages.h"
 #import "FTXLog.h"
 #import "FTXRenderViewFactory.h"
-#import "FTXPiPKit/FTXPipConstants.h"
+#import "VodGlobalResource.h"
+#import <AVKit/AVKit.h>
 #import <CoreVideo/CoreVideo.h>
 
-/// iOS VOD Texture 渲染实现相关类
-///
-/// FTXVodTexture：实现 FlutterTexture 协议，向 Flutter Engine 提供最新的一帧 CVPixelBuffer
 @interface FTXVodTexture : NSObject<FlutterTexture>
 @property (nonatomic, assign) int64_t textureId;
-@property (atomic, assign) CVPixelBufferRef latestPixelBuffer; // 持有最新帧（需 CFRetain/CFRelease）
+@property (atomic, assign) CVPixelBufferRef latestPixelBuffer;
 @end
 
 @implementation FTXVodTexture
-- (instancetype)init {
-    if (self = [super init]) {
-        _latestPixelBuffer = NULL;
-    }
-    return self;
-}
-
-/// Flutter Engine 拉取像素帧时回调，需返回已经 CFRetain 的像素缓冲
 - (CVPixelBufferRef)copyPixelBuffer {
-//    NSLog(@"copyPixelBuffer textureId: %ld", _textureId);
-    CVPixelBufferRef pixel = NULL;
     @synchronized (self) {
-        if (_latestPixelBuffer != NULL) {
-            pixel = _latestPixelBuffer;
-            CFRetain(pixel);
+        if (_latestPixelBuffer) {
+            CFRetain(_latestPixelBuffer);
         }
+        return _latestPixelBuffer;
     }
-    return pixel;
 }
 
 - (void)dealloc {
     @synchronized (self) {
-        if (_latestPixelBuffer != NULL) {
+        if (_latestPixelBuffer) {
             CFRelease(_latestPixelBuffer);
             _latestPixelBuffer = NULL;
         }
@@ -53,7 +40,6 @@
 }
 @end
 
-/// 记录每个 playerId 对应的 Flutter Texture 实体
 @interface FTXTextureEntry : NSObject
 @property (nonatomic, assign) int64_t textureId;
 @property (nonatomic, strong) FTXVodTexture *texture;
@@ -62,7 +48,7 @@
 @implementation FTXTextureEntry
 @end
 
-@interface SuperPlayerPlugin ()<FTXVodPlayerDelegate,TXFlutterSuperPlayerPluginAPI,TXFlutterNativeAPI, FlutterPlugin, TXLiveBaseDelegate>
+@interface SuperPlayerPlugin ()<FTXVodPlayerDelegate,TXFlutterSuperPlayerPluginAPI,TXFlutterNativeAPI, FlutterPlugin>
 
 @property (nonatomic, strong) NSObject<FlutterPluginRegistrar>* registrar;
 @property (nonatomic, strong) NSMutableDictionary *players;
@@ -71,10 +57,9 @@
 @property (nonatomic, strong) TXPluginFlutterAPI* pluginFlutterApi;
 @property (nonatomic, strong) TXPipFlutterAPI* pipFlutterApi;
 @property (nonatomic, strong) FTXRenderViewFactory* renderViewFactory;
-
-// Texture 渲染支持：通道与缓存
+@property (nonatomic, assign) BOOL isRegistered;
 @property (nonatomic, strong) FlutterMethodChannel *textureChannel;
-@property (nonatomic, strong) NSMutableDictionary<NSNumber*, FTXTextureEntry*> *textureEntries; // key: playerId
+@property (nonatomic, strong) NSMutableDictionary<NSNumber*, FTXTextureEntry*> *textureEntries;
 
 @end
 
@@ -83,26 +68,24 @@
     int mCurrentOrientation;
 }
 
-SuperPlayerPlugin* instance;
-
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     FTXLOGV(@"called registerWithRegistrar");
-    instance = [[SuperPlayerPlugin alloc] initWithRegistrar:registrar];
+    SuperPlayerPlugin* instance = [[SuperPlayerPlugin alloc] initWithRegistrar:registrar];
     SetUpTXFlutterNativeAPI([registrar messenger], instance);
     SetUpTXFlutterSuperPlayerPluginAPI([registrar messenger], instance);
     [registrar addApplicationDelegate:instance];
-    [TXLiveBase sharedInstance].delegate = instance;
+    // Process-level hooks (TXLiveBase delegate / orientation) are managed by VodGlobalResource
+    // via acquire/release in initWithRegistrar:/destroy, so the single-delegate nature of
+    // [TXLiveBase sharedInstance].delegate no longer causes cross-engine conflicts.
 }
 
 - (void)detachFromEngineForRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
     FTXLOGV(@"called detachFromEngineForRegistrar");
-    if(nil != instance) {
-        [instance destory];
+    if (self.isRegistered) {
+        self.isRegistered = NO;
+        [self destroy];
+        [[NSNotificationCenter defaultCenter] removeObserver:self];
     }
-    if (nil != _fTXDownloadManager) {
-        [_fTXDownloadManager destroy];
-    }
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (instancetype)initWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
@@ -122,118 +105,31 @@ SuperPlayerPlugin* instance;
         
         [self.audioManager registerVolumeChangeListener:self];
         _fTXDownloadManager = [[FTXDownloadManager alloc] initWithRegistrar:registrar];
-        // orientation
+        // orientation baseline; actual listener lives in VodGlobalResource and broadcasts to
+        // every engine via -dispatchOrientationChanged:.
         mCurrentOrientation = ORIENTATION_PORTRAIT_UP;
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(onDeviceOrientationChange:)
-                                                     name:UIDeviceOrientationDidChangeNotification
-                                                   object:nil];
         // renderView
         self.renderViewFactory = [[FTXRenderViewFactory alloc] initWithBinaryMessenger:registrar.messenger];
         [registrar registerViewFactory:self.renderViewFactory withId:VIEW_TYPE_FTX_RENDER_VIEW];
-
-        // 注册 Texture 渲染后端通道（与 Android 保持一致），仅用于 VOD
-        _textureEntries = @{}.mutableCopy;
-        _textureChannel = [FlutterMethodChannel methodChannelWithName:@"com.tencent.vod.flutter/texture" binaryMessenger:[registrar messenger]];
-        __weak typeof(self) wself = self;
-        [_textureChannel setMethodCallHandler:^(FlutterMethodCall * _Nonnull call, FlutterResult  _Nonnull result) {
+        self.textureEntries = @{}.mutableCopy;
+        self.textureChannel = [FlutterMethodChannel methodChannelWithName:@"com.tencent.vod.flutter/texture"
+                                                          binaryMessenger:registrar.messenger];
+        __weak typeof(self) weakSelf = self;
+        [self.textureChannel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
             if ([call.method isEqualToString:@"createTexture"]) {
-                [wself handleCreateTexture:call result:result];
+                [weakSelf handleCreateTexture:call result:result];
             } else if ([call.method isEqualToString:@"disposeTexture"]) {
-                [wself handleDisposeTexture:call result:result];
+                [weakSelf handleDisposeTexture:call result:result];
             } else {
                 result(FlutterMethodNotImplemented);
             }
         }];
+        self.isRegistered = YES;
+        // Hand process-level hooks to VodGlobalResource (single TXLiveBaseDelegate / shared
+        // orientation observer; fan-out to every attached engine).
+        [[VodGlobalResource sharedInstance] acquire:self];
     }
     return self;
-}
-
-/// 创建 Texture 并将 VOD 播放器切换为自定义渲染（外部纹理）
-- (void)handleCreateTexture:(FlutterMethodCall *)call result:(FlutterResult)result {
-    id pidObj = call.arguments[@"playerId"];
-    if (![pidObj isKindOfClass:[NSNumber class]]) {
-        FTXLOGE(@"createTexture bad_args: playerId required");
-        result([FlutterError errorWithCode:@"bad_args" message:@"playerId required" details:nil]);
-        return;
-    }
-    NSNumber *playerId = (NSNumber *)pidObj;
-    
-    BOOL renderWithTexture = NO;
-    NSNumber *renderWithTextureValue = call.arguments[@"renderWithTexture"];
-    if (renderWithTextureValue && [renderWithTextureValue isKindOfClass:NSNumber.class]) {
-        renderWithTexture = [renderWithTextureValue boolValue];
-    }
-    
-    FTXBasePlayer *base = self.players[playerId];
-    if (base == nil || ![base isKindOfClass:[FTXVodPlayer class]]) {
-        FTXLOGE(@"createTexture no vod player for id:%@", playerId);
-        result([FlutterError errorWithCode:@"no_player" message:[NSString stringWithFormat:@"player not found or not vod: %@", playerId] details:nil]);
-        return;
-    }
-    // 释放旧的 Texture（若存在）
-    FTXTextureEntry *old = self.textureEntries[playerId];
-    if (old) {
-        @try { [self.registrar.textures unregisterTexture:old.textureId]; } @catch (__unused NSException *e) {}
-        [self.textureEntries removeObjectForKey:playerId];
-    }
-
-    // 注册新的 FlutterTexture
-    FTXVodTexture *texture = [FTXVodTexture new];
-    int64_t tid = [self.registrar.textures registerTexture:texture];
-    texture.textureId = tid;
-    FTXTextureEntry *holder = [FTXTextureEntry new];
-    holder.texture = texture;
-    holder.textureId = tid;
-    self.textureEntries[playerId] = holder;
-
-    // 切换 VOD 播放器到自定义渲染：通过回调推送 CVPixelBuffer
-    __weak typeof(self) wSelf = self;
-    __weak FTXVodTexture *wTex = texture;
-    FTXVodPlayer *vod = (FTXVodPlayer *)base;
-    // 仅在 VOD 上支持 Texture，不涉及 DRM/HDR/PIP/字幕内嵌
-    [vod enableExternalTextureWithConsumer:^(CVPixelBufferRef _Nonnull pixelBuffer) {
-        if (!wTex) return;
-        @synchronized (wTex) {
-            if (wTex.latestPixelBuffer) {
-                CFRelease(wTex.latestPixelBuffer);
-                wTex.latestPixelBuffer = NULL;
-            }
-            if (pixelBuffer) {
-                CFRetain(pixelBuffer);
-                wTex.latestPixelBuffer = pixelBuffer;
-            }
-        }
-        if (wSelf) {
-            [wSelf.registrar.textures textureFrameAvailable:tid];
-        }
-    } renderWithTexture:renderWithTexture];
-
-    FTXLOGI(@"createTexture success, playerId=%@, textureId=%lld", playerId, tid);
-    result(@((int)tid));
-}
-
-/// 释放 Texture 资源（不强制恢复 PlatformView，交由上层控制）
-- (void)handleDisposeTexture:(FlutterMethodCall *)call result:(FlutterResult)result {
-    id pidObj = call.arguments[@"playerId"];
-    if (![pidObj isKindOfClass:[NSNumber class]]) {
-        FTXLOGE(@"disposeTexture bad_args: playerId required");
-        result([FlutterError errorWithCode:@"bad_args" message:@"playerId required" details:nil]);
-        return;
-    }
-    NSNumber *playerId = (NSNumber *)pidObj;
-    FTXTextureEntry *entry = self.textureEntries[playerId];
-    if (entry) {
-        @try { [self.registrar.textures unregisterTexture:entry.textureId]; } @catch (__unused NSException *e) {}
-        [self.textureEntries removeObjectForKey:playerId];
-    }
-    // 关闭 VOD 的自定义渲染
-    FTXBasePlayer *base = self.players[playerId];
-    if ([base isKindOfClass:[FTXVodPlayer class]]) {
-        [(FTXVodPlayer *)base disableExternalTexture];
-    }
-    FTXLOGI(@"disposeTexture, playerId=%@", playerId);
-    result(nil);
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context
@@ -245,9 +141,50 @@ SuperPlayerPlugin* instance;
     }];
 }
 
--(void) destory
+-(void) destroy
 {
-    [self.audioManager destory:self];
+    if (_audioManager) {
+        [_audioManager destroy:self];
+        _audioManager = nil;
+    }
+    [self releaseAllPlayer];
+    for (NSNumber *playerId in self.textureEntries.allKeys) {
+        [self disposeTextureForPlayerId:playerId];
+    }
+    [self.textureChannel setMethodCallHandler:nil];
+    self.textureChannel = nil;
+    if (nil != _fTXDownloadManager) {
+        [_fTXDownloadManager destroy];
+        _fTXDownloadManager = nil;
+    }
+    // Unregister from VodGlobalResource so the process-level hooks can be torn down when the
+    // last engine detaches.
+    [[VodGlobalResource sharedInstance] release:self];
+    if (_renderViewFactory) {
+        [_renderViewFactory teardownAllViews];
+        _renderViewFactory = nil;
+    }
+    // Unbind Pigeon API handlers so the binary messenger does not keep a strong reference to
+    // this plugin instance after the engine detaches. Paired with the SetUp*API(messenger,self)
+    // calls in +registerWithRegistrar:.
+    if (_registrar) {
+        SetUpTXFlutterNativeAPI([_registrar messenger], nil);
+        SetUpTXFlutterSuperPlayerPluginAPI([_registrar messenger], nil);
+    }
+}
+
+-(void) releaseAllPlayer {
+    @synchronized (self) {
+        FTXLOGV(@"start releaseAllPlayer");
+        NSArray *allKeys = [self.players allKeys];
+        for (id key in allKeys) {
+            FTXBasePlayer *player = [self.players objectForKey:key];
+            if (player && [player respondsToSelector:@selector(destroy)]) {
+                [player destroy];
+            }
+        }
+        [self.players removeAllObjects];
+    }
 }
 
 -(void) setSysBrightness:(NSNumber*)brightness {
@@ -268,10 +205,76 @@ SuperPlayerPlugin* instance;
 -(void) releasePlayerInner:(NSNumber*)playerId {
     FTXLOGV(@"called releasePlayerInner,%@ is start release", playerId);
     FTXBasePlayer *player = [_players objectForKey:playerId];
+    [self disposeTextureForPlayerId:playerId];
     if (player != nil) {
         FTXLOGI(@"releasePlayer start destroy player :%@", playerId);
-        [player destory];
+        [player destroy];
         [_players removeObjectForKey:playerId];
+    }
+}
+
+- (void)handleCreateTexture:(FlutterMethodCall *)call result:(FlutterResult)result {
+    NSNumber *playerId = call.arguments[@"playerId"];
+    if (![playerId isKindOfClass:NSNumber.class]) {
+        result([FlutterError errorWithCode:@"bad_args" message:@"playerId required" details:nil]);
+        return;
+    }
+    FTXBasePlayer *basePlayer = self.players[playerId];
+    if (![basePlayer isKindOfClass:FTXVodPlayer.class]) {
+        result([FlutterError errorWithCode:@"no_player" message:@"VOD player not found" details:nil]);
+        return;
+    }
+
+    [self disposeTextureForPlayerId:playerId];
+    FTXVodTexture *texture = [FTXVodTexture new];
+    int64_t textureId = [self.registrar.textures registerTexture:texture];
+    texture.textureId = textureId;
+    FTXTextureEntry *entry = [FTXTextureEntry new];
+    entry.textureId = textureId;
+    entry.texture = texture;
+    self.textureEntries[playerId] = entry;
+
+    BOOL renderWithTexture = [call.arguments[@"renderWithTexture"] boolValue];
+    __weak typeof(self) weakSelf = self;
+    __weak FTXVodTexture *weakTexture = texture;
+    [(FTXVodPlayer *)basePlayer enableExternalTextureWithConsumer:^(CVPixelBufferRef pixelBuffer) {
+        FTXVodTexture *strongTexture = weakTexture;
+        if (!strongTexture) {
+            return;
+        }
+        @synchronized (strongTexture) {
+            if (strongTexture.latestPixelBuffer) {
+                CFRelease(strongTexture.latestPixelBuffer);
+            }
+            strongTexture.latestPixelBuffer = pixelBuffer;
+            if (pixelBuffer) {
+                CFRetain(pixelBuffer);
+            }
+        }
+        [weakSelf.registrar.textures textureFrameAvailable:textureId];
+    } renderWithTexture:renderWithTexture];
+    result(@(textureId));
+}
+
+- (void)handleDisposeTexture:(FlutterMethodCall *)call result:(FlutterResult)result {
+    NSNumber *playerId = call.arguments[@"playerId"];
+    if (![playerId isKindOfClass:NSNumber.class]) {
+        result([FlutterError errorWithCode:@"bad_args" message:@"playerId required" details:nil]);
+        return;
+    }
+    [self disposeTextureForPlayerId:playerId];
+    result(nil);
+}
+
+- (void)disposeTextureForPlayerId:(NSNumber *)playerId {
+    FTXBasePlayer *player = self.players[playerId];
+    if ([player isKindOfClass:FTXVodPlayer.class]) {
+        [(FTXVodPlayer *)player disableExternalTexture];
+    }
+    FTXTextureEntry *entry = self.textureEntries[playerId];
+    if (entry) {
+        [self.registrar.textures unregisterTexture:entry.textureId];
+        [self.textureEntries removeObjectForKey:playerId];
     }
 }
 
@@ -298,19 +301,8 @@ SuperPlayerPlugin* instance;
 
 - (void)applicationWillTerminate:(UIApplication *)application {
     FTXLOGV(@"called applicationWillTerminate");
-    for(id key in self.players) {
-        id player = self.players[key];
-        if([player respondsToSelector:@selector(notifyAppTerminate:)]) {
-            [player notifyAppTerminate:application];
-        }
-    }
-    if (nil != _fTXDownloadManager) {
-        [_fTXDownloadManager destroy];
-    }
+    [self destroy];
 }
-
-
-
 
 #pragma mark - FTXVodPlayerDelegate
 
@@ -364,42 +356,18 @@ SuperPlayerPlugin* instance;
 
 #pragma mark - orientation
 
-- (void)onDeviceOrientationChange:(NSNotification *)notification {
-    // For iOS, there is no need to check whether the auto screen rotation/vertical screen lock switch is turned on.
-    // When the lock is turned on in iOS, the callback cannot be received by default.
-    UIDeviceOrientation orientation = [UIDevice currentDevice].orientation;
-    UIInterfaceOrientation interfaceOrientation = (UIInterfaceOrientation)orientation;
-    int tempOrientationCode = mCurrentOrientation;
-    switch (interfaceOrientation) {
-        case UIInterfaceOrientationPortrait:
-            // Battery bar on top.
-            tempOrientationCode = ORIENTATION_PORTRAIT_UP;
-            break;
-        case UIInterfaceOrientationLandscapeLeft:
-            // Battery bar on the left.
-            tempOrientationCode = ORIENTATION_LANDSCAPE_LEFT;
-            break;
-        case UIInterfaceOrientationPortraitUpsideDown:
-            // Battery bar on the bottom.
-            tempOrientationCode = ORIENTATION_PORTRAIT_DOWN;
-            break;
-        case UIInterfaceOrientationLandscapeRight:
-            // Battery bar on the right.
-            tempOrientationCode = ORIENTATION_LANDSCAPE_RIGHT;
-            break;
-        default:
-            break;
-    }
-    if(tempOrientationCode != mCurrentOrientation) {
-        mCurrentOrientation = tempOrientationCode;
-        [self.pluginFlutterApi onNativeEventEvent:@{
-            @"event" : @(EVENT_ORIENTATION_CHANGED),
-            EXTRA_NAME_ORIENTATION : @(tempOrientationCode)} completion:^(FlutterError * _Nullable error) {
-            if (nil != error) {
-                FTXLOGE(@"callback message error:%@", error);
-            }
-        }];
-    }
+// The orientation event listener has been migrated to VodGlobalResource, which fans out the
+// change into every attached SuperPlayerPlugin via -dispatchOrientationChanged:.
+- (void)dispatchOrientationChanged:(int)orientation {
+    if (orientation == mCurrentOrientation) return;
+    mCurrentOrientation = orientation;
+    [self.pluginFlutterApi onNativeEventEvent:@{
+        @"event" : @(EVENT_ORIENTATION_CHANGED),
+        EXTRA_NAME_ORIENTATION : @(orientation)} completion:^(FlutterError * _Nullable error) {
+        if (nil != error) {
+            FTXLOGE(@"callback message error:%@", error);
+        }
+    }];
 }
 
 #pragma mark - superPlayerPluginAPI
@@ -526,7 +494,10 @@ SuperPlayerPlugin* instance;
 }
 
 - (nullable IntMsg *)isDeviceSupportPipWithError:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
-    BOOL isSupport = [TXVodPlayer isSupportPictureInPicture];
+    BOOL isSupport = NO;
+    if (@available(iOS 15.0, *)) {
+        isSupport = AVPictureInPictureController.isPictureInPictureSupported;
+    }
     int pipSupportResult = isSupport ? 0 : ERROR_IOS_PIP_DEVICE_NOT_SUPPORT;
     return [TXCommonUtil intMsgWith:@(pipSupportResult)];
 }
@@ -568,46 +539,21 @@ SuperPlayerPlugin* instance;
     return self.players;
 }
 
-#pragma mark TXLiveBaseDelegate
+#pragma mark - Global SDK event forwarding
 
-- (void)onLog:(NSString *)log LogLevel:(int)level WhichModule:(NSString *)module {
-//    [_eventSink success:[SuperPlayerPlugin getParamsWithEvent:EVENT_ON_LOG withParams:@{
-//        @(EVENT_LOG_LEVEL) : @(level),
-//        @(EVENT_LOG_MODULE) : module,
-//        @(EVENT_LOG_MSG) : log
-//    }]];
-    // this may be too busy, so currently do not throw on the Flutter side
-}
-
-- (void)onUpdateNetworkTime:(int)errCode message:(NSString *)errMsg {
-//    [_eventSink success:[SuperPlayerPlugin getParamsWithEvent:EVENT_ON_UPDATE_NETWORK_TIME withParams:@{
-//        @(EVENT_ERR_CODE) : @(errCode),
-//        @(EVENT_ERR_MSG) : errMsg,
-//    }]];
-    // This will be opened in a subsequent version
-}
-
-- (void)onLicenceLoaded:(int)result Reason:(NSString *)reason {
-    FTXLOGV(@"onLicenceLoaded,result:%d, reason:%@", result, reason);
-    __block int blockResult = result;
-    __block NSString* blockReason = reason;
-    __block NSDictionary *param = @{
-        @(EVENT_RESULT) : @(blockResult),
-        @(EVENT_REASON) : blockReason,
+// TXLiveBaseDelegate has been migrated to VodGlobalResource, which fans out the License-loaded
+// event into every attached SuperPlayerPlugin via -dispatchLicenceLoaded:reason:.
+- (void)dispatchLicenceLoaded:(int)result reason:(NSString *)reason {
+    FTXLOGV(@"dispatchLicenceLoaded,result:%d, reason:%@", result, reason);
+    NSDictionary *param = @{
+        @(EVENT_RESULT) : @(result),
+        @(EVENT_REASON) : reason ?: @"",
     };
     [self.pluginFlutterApi onSDKListenerEvent:[TXCommonUtil getParamsWithEvent:EVENT_ON_LICENCE_LOADED withParams:param] completion:^(FlutterError * _Nullable error) {
         if (nil != error) {
             FTXLOGE(@"callback message error:%@", error);
         }
     }];
-}
-
-- (void)onCustomHttpDNS:(NSString *)hostName ipList:(NSMutableArray<NSString *> *)list {
-//    [_eventSink success:[SuperPlayerPlugin getParamsWithEvent:EVENT_ON_LICENCE_LOADED withParams:@{
-//        @(EVENT_HOST_NAME) : hostName,
-//        @(EVENT_IPS) : list,
-//    }]];
-    // This will be opened in a subsequent version
 }
 
 @end

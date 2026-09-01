@@ -1,5 +1,5 @@
 // Copyright (c) 2022 Tencent. All rights reserved.
-// import 'package:pigeon/pigeon.dart';
+import 'package:pigeon/pigeon.dart';
 
 /// Pigeon original component, used to generate native communication code for `messages`.
 /// The generation command is as follows. When using the generation command,
@@ -9,13 +9,13 @@
 /// 生成命令如下，使用生成命令的时候，需要实现注释掉以上两个import导入
 /*
     dart run pigeon \
-    --input lib/Core/pigeons/txplayer_message.txt \
+    --input generator/txplayer_message.dart \
     --dart_out lib/Core/txplayer_messages.dart \
     --objc_header_out ios/Classes/messages/FtxMessages.h \
     --objc_source_out ios/Classes/messages/FtxMessages.m \
     --java_out ./android/src/main/java/com/tencent/vod/flutter/messages/FtxMessages.java \
     --java_package "com.tencent.vod.flutter.messages" \
-    --copyright_header lib/Core/pigeons/txplayer_copy_right.txt
+    --copyright_header generator/txplayer_copy_right.txt
  */
 
 class PlayerMsg {
@@ -243,6 +243,8 @@ class TXVodDownloadMediaMsg {
   int? speed;
   /// 资源是否已损坏, 如：资源被删除了
   bool? isResourceBroken;
+  /// mp4加密等级
+  int? encryptedMp4Level;
 }
 
 class TXDownloadListMsg {
@@ -282,6 +284,7 @@ class PreLoadMsg {
   String? playUrl;
   double? preloadSizeMB;
   int? preferredResolution;
+  int? encryptedMp4Level;
 }
 
 class PreLoadInfoMsg {
@@ -293,6 +296,7 @@ class PreLoadInfoMsg {
   int? preferredResolution;
   int? tmpPreloadTaskId;
   Map<String?, String?>? httpHeader;
+  int? encryptedMp4Level;
 }
 
 class MapMsg {
@@ -672,6 +676,18 @@ abstract class TXFlutterVodPlayerApi {
   void setRenderMode(int renderMode);
 
   void reDraw();
+
+  void enableTRTC(bool isEnabled);
+
+  void publishVideo();
+
+  void unpublishVideo();
+
+  void publishAudio();
+
+  void unpublishAudio();
+
+  void setAutoPictureInPictureEnabled(bool isEnabled);
 }
 
 @HostApi()
@@ -749,6 +765,12 @@ abstract class TXFlutterLivePlayerApi {
   void setPlayerView(int renderViewId);
 
   void setRenderMode(int renderMode);
+
+  void startLocalRecording(Map<String, Object> localRecordingParams);
+
+  void stopLocalRecording();
+
+  void snapshot();
 }
 
 @HostApi()
@@ -830,4 +852,12 @@ abstract class TXLivePlayerFlutterAPI {
   void onPlayerEvent(Map<String, Object> event);
 
   void onNetEvent(Map<String, Object> event);
+
+  void onLocalRecordBegin(int code, String storagePath);
+
+  void onLocalRecording(int durationMs, String storagePath);
+
+  void onLocalRecordComplete(int code, String storagePath);
+
+  void onSnapshotComplete(Uint8List? imageBytes);
 }

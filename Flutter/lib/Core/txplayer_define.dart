@@ -3,6 +3,7 @@ part of SuperPlayer;
 
 const _kFTXPlayerRenderViewType = "FTXRenderViewType";
 const _kFTXAndroidRenderTypeKey = "renderViewType";
+const _kFTXAndroidSurfacePassThroughKey = "androidSurfacePassThrough";
 
 class TXPlayerValue {
   final TXPlayerState state;
@@ -423,6 +424,9 @@ abstract class TXVodPlayEvent {
   /// Select track complete
   /// 切换轨道完成
   static const VOD_PLAY_EVT_SELECT_TRACK_COMPLETE  = 2020;
+  /// Playback paused
+  /// 播放暂停
+  static const VOD_PLAY_EVT_PLAY_PAUSE = 2022;
   /// Switched media track index
   /// 切换的媒体轨道index
   static const EVT_KEY_SELECT_TRACK_INDEX    = "EVT_KEY_SELECT_TRACK_INDEX";
@@ -454,6 +458,9 @@ abstract class TXVodPlayEvent {
   /// mp4加密播放：不加密。 12.2 版本开始支持。
   /// MP4 encryption playback: No encryption. Supported since version 12.2.
   static const MP4_ENCRYPTION_LEVEL_NONE = 0;
+  /// mp4加密播放： mp4在线加密播放。12.2 版本开始支持。
+  /// MP4 encrypted playback: MP4 online encrypted playback. Supported since version 12.2.
+  static const MP4_ENCRYPTION_LEVEL_L1 = 1;
   /// mp4加密播放： mp4本地加密播放。12.2 版本开始支持。
   /// MP4 encrypted playback: MP4 local encrypted playback. Supported since version 12.2.
   static const MP4_ENCRYPTION_LEVEL_L2 = 2;
@@ -643,15 +650,21 @@ class DownloadQuality {
 }
 
 class TXPlayInfoParams {
-  final int appId; // Tencent Cloud video appId, required
-  final String fileId; // Tencent Cloud video fileId, required
+  final int? appId; // Tencent Cloud video appId, required
+  final String? fileId; // Tencent Cloud video fileId, required
   final String? psign; // Tencent cloud video encryption signature, required for encrypted video
   // video url, only applicable for preloading. When using it, you only need to fill in either the url or fileId.
   // The priority of the url is higher than that of the fileId.
   final String? url;
   // Custom httpHeader
   final Map<String, String>? httpHeader;
-  const TXPlayInfoParams({required this.appId, required this.fileId, this.psign = "", this.url = "", this.httpHeader});
+  // mp4 encryption level
+  final int encryptedMp4Level;
+
+  const TXPlayInfoParams.useFileId({required this.appId, required this.fileId, this.psign = "", this.httpHeader, this.encryptedMp4Level = TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE}) : this.url = "";
+  const TXPlayInfoParams.useUrl({required this.url, this.httpHeader, this.encryptedMp4Level = TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE}) : this.appId = 0, this.fileId = "", this.psign = "";
+
+  const TXPlayInfoParams({required this.appId, required this.fileId, this.psign = "", this.url = "", this.httpHeader, this.encryptedMp4Level = TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE});
 
   Map<String, dynamic> toJson() {
     Map<String, dynamic> json = {};
@@ -758,6 +771,9 @@ class TXVodDownloadMediaInfo {
   /// fileId 存储
   TXVodDownloadDataSource? dataSource;
 
+  /// mp4加密等级
+  int encryptedMp4Level = TXVodPlayEvent.MP4_ENCRYPTION_LEVEL_NONE;
+
   Map<String, dynamic> toJson() {
     Map<String, dynamic> json = {};
     if (null != dataSource) {
@@ -774,6 +790,7 @@ class TXVodDownloadMediaInfo {
     json["downloadSize"] = downloadSize;
     json["speed"] = speed;
     json["isResourceBroken"] = isResourceBroken;
+    json["encryptedMp4Level"] = encryptedMp4Level;
     return json;
   }
 
@@ -798,6 +815,7 @@ class TXVodDownloadMediaInfo {
     msg.downloadSize = downloadSize;
     msg.speed = speed;
     msg.isResourceBroken = isResourceBroken;
+    msg.encryptedMp4Level = encryptedMp4Level;
     return msg;
   }
 }
@@ -931,6 +949,44 @@ class FSteamInfo {
   }
 }
 
+class FTXLiveLocalRecordingParams {
+  String filePath;
+  int interval;
+
+  FTXLiveLocalRecordingParams({
+    required this.filePath,
+    this.interval = -1,
+  });
+
+  Map<String, Object> toJson() {
+    return {
+      'filePath': filePath,
+      'interval': interval,
+    };
+  }
+
+  factory FTXLiveLocalRecordingParams.fromJson(Map<String, dynamic> json) {
+    return FTXLiveLocalRecordingParams(
+      filePath: json['filePath'] as String,
+      interval: json['interval'] as int? ?? -1,
+    );
+  }
+}
+
+class FTXLiveListener {
+  FTXLiveLocalRecordBegin? recordBeginCallback;
+  FTXLiveLocalRecording? recordingCallback;
+  FTXLiveLocalRecordComplete? recordCompleteCallback;
+  FTXLiveSnapshotComplete? snapshotCompleteCallback;
+
+  FTXLiveListener({
+    this.recordBeginCallback,
+    this.recordingCallback,
+    this.recordCompleteCallback,
+    this.snapshotCompleteCallback,
+});
+}
+
 /// Player type.
 ///
 /// 播放器类型
@@ -976,3 +1032,8 @@ typedef FTXDownlodOnStateChangeListener = void Function(int event, TXVodDownload
 typedef FTXDownlodOnErrorListener = void Function(int errorCode, String errorMsg, TXVodDownloadMediaInfo info);
 
 typedef FTXLicenceLoadedListener = void Function(int result, String reason);
+
+typedef FTXLiveLocalRecordBegin = void Function(int code, String storagePath);
+typedef FTXLiveLocalRecording = void Function(int durationMs, String storagePath);
+typedef FTXLiveLocalRecordComplete = void Function(int code, String storagePath);
+typedef FTXLiveSnapshotComplete = void Function(Uint8List? imageBytes);

@@ -15,12 +15,11 @@
 #import "FTXImgTools.h"
 #import "FTXTextureView.h"
 #import "FTXPlayerConstants.h"
-#import "FTXPiPKit/FTXPipConstants.h"
-#import "FTXPlayerConstants.h"
+#import "FTXVodPictureInPictureController.h"
 
 static const int uninitialized = -1;
 
-@interface FTXVodPlayer ()<TXVodPlayListener, TXFlutterVodPlayerApi, TXVideoCustomProcessDelegate>
+@interface FTXVodPlayer ()<TXVodPlayListener, TXFlutterVodPlayerApi, TXVideoCustomProcessDelegate, FTXVodPictureInPictureControllerDelegate>
 
 @property (nonatomic, assign) BOOL hasEnteredPipMode;
 @property (nonatomic, assign) BOOL restoreUI;
@@ -29,13 +28,13 @@ static const int uninitialized = -1;
 @property (nonatomic, strong) TXVodPlayerFlutterAPI* vodFlutterApi;
 @property (nonatomic, strong) FTXRenderViewFactory* renderViewFactory;
 @property (nonatomic, strong) FTXRenderView *curRenderView;
-@property (nonatomic, strong) UIView *txPipView;
+@property (nonatomic, strong) UIView *customPipHostView;
 @property (nonatomic, assign) NSUInteger renderMode;
 @property (nonatomic, assign) float cacheStartTime;
-
-// Texture 外部纹理渲染：向上层提供 CVPixelBuffer 的消费回调
 @property (nonatomic, copy) void (^pixelBufferConsumer)(CVPixelBufferRef pixelBuffer);
 @property (nonatomic, assign) BOOL renderWithTexture;
+@property (nonatomic, assign) BOOL autoPictureInPictureEnabled;
+@property (nonatomic, strong) FTXVodPictureInPictureController *pictureInPictureController API_AVAILABLE(ios(15.0));
 
 @end
 /**
@@ -82,58 +81,87 @@ static const int uninitialized = -1;
 
 - (void)onApplicationTerminateClick {
     _isTerminate = YES;
-    [self stopPlay];
-    if (nil != _txVodPlayer) {
-        [self setRenderView:nil];
-        _txVodPlayer = nil;
-        _txVodPlayer.videoProcessDelegate = nil;
-    }
+    [self destroy];
 }
 
 - (void)notifyAppTerminate:(UIApplication *)application {
-    if (!_isTerminate) {
-        FTXLOGW(@"vodPlayer is called _isTerminate terminate");
-        [self notifyPlayerTerminate];
+    if (!_isTerminate && !self.isDestroyed) {
+        FTXLOGW(@"vodPlayer is called notifyAppTerminate terminate");
+        _isTerminate = YES;
+        [self destroy];
     }
 }
 
 - (void)dealloc
 {
-    if (!_isTerminate) {
-        FTXLOGW(@"vodPlayer is called delloc terminate");
-        [self notifyPlayerTerminate];
+    if (!_isTerminate && !self.isDestroyed) {
+        FTXLOGW(@"vodPlayer is called dealloc terminate");
+        [self performDestroyOnCurrentThread];
     }
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)notifyPlayerTerminate {
     FTXLOGW(@"vodPlayer notifyPlayerTerminate");
-    if (nil != _txVodPlayer) {
-        [_txVodPlayer removeVideoWidget];
-        [self setRenderView:nil];
-        _txVodPlayer.vodDelegate = nil;
-    }
-    self.curRenderView = nil;
     _isTerminate = YES;
-    [self stopPlay];
-    _txVodPlayer = nil;
+    [self destroy];
 }
 
-- (void)destory
+- (void)destroy
 {
-    FTXLOGV(@"vodPlayer start called destory");
+    FTXLOGV(@"vodPlayer start called destroy");
+    if (![self markDestroyedIfNeeded]) {
+        FTXLOGW(@"vodPlayer destroy: already destroyed, skip");
+        return;
+    }
+    if ([NSThread isMainThread]) {
+        [self performDestroyOnMainThread];
+    } else {
+        __weak typeof(self) weakSelf = self;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [weakSelf performDestroyOnMainThread];
+        });
+    }
+}
+
+- (void)performDestroyOnMainThread {
     [self stopPlay];
     if (nil != _txVodPlayer) {
-        [self setRenderView:nil];
         [_txVodPlayer removeVideoWidget];
+        self.renderControl = nil;
+        _txVodPlayer.vodDelegate = nil;
+        _txVodPlayer.videoProcessDelegate = nil;
         _txVodPlayer = nil;
     }
-
-    self.txPipView = nil;
     self.curRenderView = nil;
+    [_customPipHostView removeFromSuperview];
+    _customPipHostView = nil;
+    self.pixelBufferConsumer = nil;
+    [self invalidateCustomPictureInPicture];
     self.cacheStartTime = 0;
-    
     _hasEnteredPipMode = NO;
     _restoreUI = NO;
+    [self releaseImageSprite];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_registrar) {
+        SetUpTXFlutterVodPlayerApiWithSuffix([_registrar messenger], nil, [self.playerId stringValue]);
+    }
+}
+
+- (void)performDestroyOnCurrentThread {
+    if (![self markDestroyedIfNeeded]) {
+        return;
+    }
+    if (nil != _txVodPlayer) {
+        _txVodPlayer.vodDelegate = nil;
+        _txVodPlayer.videoProcessDelegate = nil;
+        _txVodPlayer = nil;
+    }
+    self.curRenderView = nil;
+    [_customPipHostView removeFromSuperview];
+    _customPipHostView = nil;
+    self.pixelBufferConsumer = nil;
+    [self invalidateCustomPictureInPicture];
     [self releaseImageSprite];
 }
 
@@ -173,7 +201,6 @@ static const int uninitialized = -1;
     if (_txVodPlayer == nil) {
         _txVodPlayer = [TXVodPlayer new];
         _txVodPlayer.vodDelegate = self;
-        _txVodPlayer.videoProcessDelegate = self;
         TXVodPlayConfig *vodConfig = [[TXVodPlayConfig alloc] init];
         NSMutableDictionary<NSString *, id> *newExtInfoMap = [NSMutableDictionary dictionary];
         [newExtInfoMap setObject:@(0) forKey:@"450"];
@@ -184,33 +211,44 @@ static const int uninitialized = -1;
     return [NSNumber numberWithLongLong:NO_ERROR];
 }
 
-/// 启用外部纹理渲染：
-/// - 解绑内部渲染视图
-/// - 设置 videoProcessDelegate = self，通过 onPlayerPixelBuffer: 回调像素帧
-/// - 不支持 DRM/HDR/PIP/字幕内嵌（如涉及，请勿启用该能力）
-- (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef _Nonnull))consumer renderWithTexture:(BOOL)renderWithTexture {
+- (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef))consumer
+                        renderWithTexture:(BOOL)renderWithTexture {
     self.pixelBufferConsumer = consumer;
     self.renderWithTexture = renderWithTexture;
-    if (_txVodPlayer != nil) {
+    if (_txVodPlayer) {
+        [self updateVideoProcessDelegate];
         if (renderWithTexture) {
-            // 移除内部渲染视图，避免双重渲染
             [_txVodPlayer removeVideoWidget];
             [self setRenderView:nil];
         }
-        // 注意：若需要特定像素格式，可通过配置 renderPixelFormatType = kCVPixelFormatType_32BGRA
-        // 这里依赖 SDK 默认输出格式；如需强制，可在 setPlayerConfig 内扩展
-//        _txVodPlayer.videoProcessDelegate = self;
     }
 }
 
-/// 关闭外部纹理渲染：
-/// - 清空回调
-/// - 还原 videoProcessDelegate，后续如需恢复 PlatformView 由上层重新绑定 viewId
 - (void)disableExternalTexture {
     self.pixelBufferConsumer = nil;
-    if (_txVodPlayer != nil) {
-        _txVodPlayer.videoProcessDelegate = nil;
+    self.renderWithTexture = NO;
+    if (_txVodPlayer) {
+        [self updateVideoProcessDelegate];
     }
+}
+
+- (BOOL)needsVideoProcessDelegate {
+    if (self.pixelBufferConsumer) {
+        return YES;
+    }
+    if (@available(iOS 15.0, *)) {
+        return self.pictureInPictureController.isActive ||
+            self.pictureInPictureController.isStarting ||
+            self.autoPictureInPictureEnabled;
+    }
+    return NO;
+}
+
+- (void)updateVideoProcessDelegate {
+    if (!_txVodPlayer) {
+        return;
+    }
+    _txVodPlayer.videoProcessDelegate = [self needsVideoProcessDelegate] ? self : nil;
 }
 
 - (void)setIsAutoPlay:(BOOL)b
@@ -224,6 +262,9 @@ static const int uninitialized = -1;
 {
     if (_txVodPlayer != nil) {
         _isStoped = NO;
+        if (@available(iOS 15.0, *)) {
+            [self.pictureInPictureController reset];
+        }
         return [_txVodPlayer startVodPlay:url];
     }
     return uninitialized;
@@ -240,6 +281,9 @@ static const int uninitialized = -1;
             p.sign = sign;
         }
         _isStoped = NO;
+        if (@available(iOS 15.0, *)) {
+            [self.pictureInPictureController reset];
+        }
         return [_txVodPlayer startVodPlayWithParams:p];
     }
     return uninitialized;
@@ -249,9 +293,13 @@ static const int uninitialized = -1;
 {
     if (_txVodPlayer != nil) {
         _isStoped = YES;
+        [self stopCustomPictureInPicture];
         BOOL result = [_txVodPlayer stopPlay];
         if (self.cacheStartTime > 0) {
             [self setStartTime:self.cacheStartTime];
+        }
+        if (@available(iOS 15.0, *)) {
+            [self.pictureInPictureController reset];
         }
         return result;
     }
@@ -270,14 +318,16 @@ static const int uninitialized = -1;
 - (void)pause
 {
     if (_txVodPlayer != nil) {
-        return [_txVodPlayer pause];
+        [_txVodPlayer pause];
+        [self invalidateCustomPictureInPicturePlaybackState];
     }
 }
 
 - (void)resume
 {
     if (_txVodPlayer != nil) {
-        return [_txVodPlayer resume];
+        [_txVodPlayer resume];
+        [self invalidateCustomPictureInPicturePlaybackState];
     }
 }
 
@@ -299,6 +349,7 @@ static const int uninitialized = -1;
 {
     if (_txVodPlayer != nil) {
         [_txVodPlayer seek:progress];
+        [self invalidateCustomPictureInPicturePlaybackState];
     }
 }
 
@@ -376,6 +427,45 @@ static const int uninitialized = -1;
     // do nothing
 }
 
+- (void)enableTRTCIsEnabled:(BOOL)isEnabled error:(FlutterError * _Nullable __autoreleasing *)error {
+#if SDK_IS_PRO
+    if (nil != _txVodPlayer) {
+        if (isEnabled) {
+            NSObject *trtcCloud = [TRTCCloud sharedInstance];
+            [_txVodPlayer attachTRTC:trtcCloud];
+        } else {
+            [_txVodPlayer detachTRTC];
+        }
+    }
+#else
+    FTXLOGE(@"enableTRTC must use professional or professional_premium sdk");
+#endif
+}
+
+- (void)publishVideoWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    if (nil != _txVodPlayer) {
+        [_txVodPlayer publishVideo];
+    }
+}
+
+- (void)publishAudioWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    if (nil != _txVodPlayer) {
+        [_txVodPlayer publishAudio];
+    }
+}
+
+- (void)unpublishVideoWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    if (nil != _txVodPlayer) {
+        [_txVodPlayer unpublishVideo];
+    }
+}
+
+- (void)unpublishAudioWithError:(FlutterError * _Nullable __autoreleasing *)error {
+    if (nil != _txVodPlayer) {
+        [_txVodPlayer unpublishAudio];
+    }
+}
+
 - (void)setPlayerImageSprite:(NSString*)urlStr withImgArray:(NSArray*)imgStrArray {
     [self releaseImageSprite];
     _txImageSprite = [[TXImageSprite alloc] init];
@@ -443,8 +533,10 @@ static const int uninitialized = -1;
         dic[EVT_FLUTTER_PROGRESS_MS] = @(progressMillisec);
         currentPlayTime = progressSec;
         param = dic;
+        [self invalidateCustomPictureInPicturePlaybackState];
     } else if(evtID == PLAY_EVT_PLAY_BEGIN) {
         currentPlayTime = 0;
+        [self invalidateCustomPictureInPicturePlaybackState];
     } else if(evtID == PLAY_EVT_START_VIDEO_DECODER) {
         dispatch_async(playerMainqueue, ^{
             self->isVideoFirstFrameReceived = false;
@@ -486,7 +578,9 @@ static const int uninitialized = -1;
  * 说明：渲染图像的数据类型为config中设置的renderPixelFormatType
  */
 - (BOOL)onPlayerPixelBuffer:(CVPixelBufferRef)pixelBuffer {
-    // 若启用了外部纹理渲染，则将像素帧交由上层消费，并阻止 SDK 内部渲染
+    if (@available(iOS 15.0, *)) {
+        [self.pictureInPictureController enqueuePixelBuffer:pixelBuffer atTime:currentPlayTime];
+    }
     if (self.pixelBufferConsumer) {
         self.pixelBufferConsumer(pixelBuffer);
         return self.renderWithTexture;
@@ -662,149 +756,93 @@ static const int uninitialized = -1;
     if (_hasEnteredPipMode) {
         return ERROR_IOS_PIP_IS_RUNNING;
     }
-    
-    if (![TXVodPlayer isSupportPictureInPicture]) {
+
+    if (!_txVodPlayer) {
+        return ERROR_IOS_PIP_PLAYER_NOT_EXIST;
+    }
+
+    if (@available(iOS 15.0, *)) {
+        if (!AVPictureInPictureController.isPictureInPictureSupported) {
+            return ERROR_IOS_PIP_DEVICE_NOT_SUPPORT;
+        }
+    } else {
         return ERROR_IOS_PIP_DEVICE_NOT_SUPPORT;
     }
-        
+
     if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipRequestStart)]) {
         [self.delegate onPlayerPipRequestStart];
     }
 
-    UIViewController* flutterVC = [self getFlutterViewController];
-    [flutterVC.view addSubview:self.txPipView];
-    [_txVodPlayer setupVideoWidget:self.txPipView insertIndex:0];
-    [_txVodPlayer enterPictureInPicture];
-    
-    return NO_ERROR;
+    if (@available(iOS 15.0, *)) {
+        FTXVodPictureInPictureController *pictureInPictureController = [self customPictureInPictureController];
+        [pictureInPictureController attachToHostView:self.customPipHostView];
+        [pictureInPictureController start];
+        [self updateVideoProcessDelegate];
+        return NO_ERROR;
+    }
+
+    return ERROR_IOS_PIP_DEVICE_NOT_SUPPORT;
 }
 
-- (UIView *)txPipView {
-    if (!_txPipView) {
-        // Set the size to 1 pixel to ensure proper display in PIP.
-        _txPipView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
-        _txPipView.hidden = YES;
+- (UIView *)customPipHostView {
+    if (!_customPipHostView) {
+        _customPipHostView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        _customPipHostView.userInteractionEnabled = NO;
+        _customPipHostView.alpha = 0.01;
+        _customPipHostView.backgroundColor = UIColor.clearColor;
+        UIViewController *flutterViewController = [self getFlutterViewController];
+        [flutterViewController.view addSubview:_customPipHostView];
     }
-    return _txPipView;
+    return _customPipHostView;
+}
+
+- (FTXVodPictureInPictureController *)customPictureInPictureController API_AVAILABLE(ios(15.0)) {
+    if (!self.pictureInPictureController) {
+        self.pictureInPictureController = [[FTXVodPictureInPictureController alloc] initWithDelegate:self];
+        self.pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline =
+            self.autoPictureInPictureEnabled;
+    }
+    return self.pictureInPictureController;
+}
+
+- (void)stopCustomPictureInPicture {
+    if (@available(iOS 15.0, *)) {
+        [self.pictureInPictureController stop];
+    }
+}
+
+- (void)invalidateCustomPictureInPicture {
+    if (@available(iOS 15.0, *)) {
+        [self.pictureInPictureController invalidate];
+        self.pictureInPictureController = nil;
+    }
+}
+
+- (void)invalidateCustomPictureInPicturePlaybackState {
+    if (@available(iOS 15.0, *)) {
+        [self.pictureInPictureController invalidatePlaybackState];
+    }
 }
 
 - (UIViewController *)getFlutterViewController {
-    UIWindow *window = nil;
     if (@available(iOS 13.0, *)) {
-        NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
-        for (UIScene *scene in connectedScenes) {
-            if ([scene isKindOfClass:[UIWindowScene class]]) {
-                UIWindowScene *windowScene = (UIWindowScene *)scene;
-                for (UIWindow *w in windowScene.windows) {
-                    if (w.isKeyWindow) {
-                        window = w;
-                        break;
-                    }
-                }
-                if (window != nil) {
-                    break;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) {
+                continue;
+            }
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) {
+                    return window.rootViewController;
                 }
             }
         }
-    } else {
-        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-            if (w.isKeyWindow) {
-                window = w;
-                break;
-            }
+    }
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        if (window.isKeyWindow) {
+            return window.rootViewController;
         }
     }
-    return window.rootViewController;
-}
-
-#pragma mark - PIP delegate
-- (void)onPlayer:(TXVodPlayer *)player pictureInPictureStateDidChange:(TX_VOD_PLAYER_PIP_STATE)pipState withParam:(NSDictionary *)param {
-    if (pipState == TX_VOD_PLAYER_PIP_STATE_DID_START) {
-        self.hasEnteredPipMode = YES;
-        if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStart)]) {
-            [self.delegate onPlayerPipStateDidStart];
-        }
-    }
-    
-    if (pipState == TX_VOD_PLAYER_PIP_STATE_WILL_STOP) {
-        if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateWillStop)]) {
-            [self.delegate onPlayerPipStateWillStop];
-        }
-    }
-    
-    if (pipState == TX_VOD_PLAYER_PIP_STATE_DID_STOP) {
-        self.hasEnteredPipMode = NO;
-        if (self.restoreUI) {
-            self.restoreUI = NO;
-        } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
-                    [player exitPictureInPicture];
-                }
-                [self->_txPipView removeFromSuperview];
-                self->_txPipView = nil;
-
-                if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
-                    [self.delegate onPlayerPipStateDidStop];
-                }
-            });
-        }
-    }
-    
-    if (pipState == TX_VOD_PLAYER_PIP_STATE_RESTORE_UI) {
-        self.restoreUI = YES;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [player exitPictureInPicture];
-            [self->_txVodPlayer resume];
-        });
-        if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateRestoreUI:)]) {
-            [self.delegate onPlayerPipStateRestoreUI:currentPlayTime];
-        }
-    }
-}
-
-- (void)onPlayer:(TXVodPlayer *)player pictureInPictureErrorDidOccur:(TX_VOD_PLAYER_PIP_ERROR_TYPE)errorType withParam:(NSDictionary *)param {
-    NSInteger type = errorType;
-    switch (errorType) {
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_NONE:
-            type = NO_ERROR;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_DEVICE_NOT_SUPPORT:
-            type = ERROR_IOS_PIP_DEVICE_NOT_SUPPORT;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PLAYER_NOT_SUPPORT:
-            type = ERROR_IOS_PIP_PLAYER_NOT_SUPPORT;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_VIDEO_NOT_SUPPORT:
-            type = ERROR_IOS_PIP_VIDEO_NOT_SUPPORT;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PIP_IS_NOT_POSSIBLE:
-            type = ERROR_IOS_PIP_IS_NOT_POSSIBLE;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_ERROR_FROM_SYSTEM:
-            type = ERROR_IOS_PIP_FROM_SYSTEM;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PLAYER_NOT_EXIST:
-            type = ERROR_IOS_PIP_PLAYER_NOT_EXIST;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PIP_IS_RUNNING:
-            type = ERROR_IOS_PIP_IS_RUNNING;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PIP_NOT_RUNNING:
-            type = ERROR_IOS_PIP_NOT_RUNNING;
-            break;
-        case TX_VOD_PLAYER_PIP_ERROR_TYPE_PIP_START_TIMEOUT:
-            type = ERROR_IOS_PIP_START_TIME_OUT;
-            break;
-        default:
-            type = errorType;
-            break;
-    }
-    self.hasEnteredPipMode = NO;
-    FTXLOGE(@"[onPlayer], pictureInPictureErrorDidOccur errorType= %ld", type);
-    if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateError:)]) {
-        [self.delegate onPlayerPipStateError:type];
-    }
+    return UIApplication.sharedApplication.delegate.window.rootViewController;
 }
 
 - (void)onPlayer:(TXVodPlayer *)player airPlayErrorDidOccur:(TX_VOD_PLAYER_AIRPLAY_ERROR_TYPE)errorType withParam:(NSDictionary *)param {
@@ -812,6 +850,86 @@ static const int uninitialized = -1;
 
 
 - (void)onPlayer:(TXVodPlayer *)player airPlayStateDidChange:(TX_VOD_PLAYER_AIRPLAY_STATE)airPlayState withParam:(NSDictionary *)param {
+}
+
+#pragma mark - FTXVodPictureInPictureControllerDelegate
+
+- (BOOL)vodPictureInPictureControllerIsPlaybackPaused {
+    return ![self isPlaying];
+}
+
+- (NSTimeInterval)vodPictureInPictureControllerCurrentTime {
+    return [self getCurrentPlaybackTime];
+}
+
+- (NSTimeInterval)vodPictureInPictureControllerDuration {
+    return [self getDuration];
+}
+
+- (void)vodPictureInPictureControllerSetPlaying:(BOOL)playing {
+    if (playing) {
+        [self resume];
+    } else {
+        [self pause];
+    }
+}
+
+- (void)vodPictureInPictureControllerSkipBySeconds:(NSTimeInterval)seconds {
+    NSTimeInterval targetTime = [self getCurrentPlaybackTime] + seconds;
+    [self seek:(float)MAX(targetTime, 0.0)];
+}
+
+- (void)vodPictureInPictureControllerDidStart {
+    self.hasEnteredPipMode = YES;
+    [self updateVideoProcessDelegate];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStart)]) {
+        [self.delegate onPlayerPipStateDidStart];
+    }
+}
+
+- (void)vodPictureInPictureControllerWillStop {
+    if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateWillStop)]) {
+        [self.delegate onPlayerPipStateWillStop];
+    }
+}
+
+- (void)vodPictureInPictureControllerDidStop {
+    self.hasEnteredPipMode = NO;
+    if (self.restoreUI) {
+        self.restoreUI = NO;
+    } else {
+        if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
+            [self.delegate onPlayerPipStateDidStop];
+        }
+    }
+    if (!self.autoPictureInPictureEnabled) {
+        [_customPipHostView removeFromSuperview];
+        _customPipHostView = nil;
+    }
+    [self updateVideoProcessDelegate];
+}
+
+- (void)vodPictureInPictureControllerRestoreUI {
+    self.restoreUI = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self->_txVodPlayer resume];
+    });
+    if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateRestoreUI:)]) {
+        [self.delegate onPlayerPipStateRestoreUI:[self getCurrentPlaybackTime]];
+    }
+}
+
+- (void)vodPictureInPictureControllerDidFailWithErrorCode:(NSInteger)errorCode {
+    self.hasEnteredPipMode = NO;
+    FTXLOGE(@"vod custom pip error:%ld", (long)errorCode);
+    if (!self.autoPictureInPictureEnabled) {
+        [_customPipHostView removeFromSuperview];
+        _customPipHostView = nil;
+    }
+    [self updateVideoProcessDelegate];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateError:)]) {
+        [self.delegate onPlayerPipStateError:errorCode];
+    }
 }
 
 #pragma mark - TXFlutterVodPlayerApi
@@ -827,9 +945,7 @@ static const int uninitialized = -1;
 }
 
 - (void)exitPictureInPictureModePlayerMsg:(nonnull PlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
-    if(_txVodPlayer != nil) {
-        [_txVodPlayer exitPictureInPicture];
-    }
+    [self stopCustomPictureInPicture];
 }
 
 - (nullable IntMsg *)getBitrateIndexPlayerMsg:(nonnull PlayerMsg *)playerMsg error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
@@ -955,7 +1071,7 @@ static const int uninitialized = -1;
 
 - (nullable BoolMsg *)startVodPlayUrl:(nonnull StringPlayerMsg *)url error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     int r = [self startVodPlay:url.value];
-    return [TXCommonUtil boolMsgWith:r];
+    return [TXCommonUtil boolMsgWith:r == 0];
 }
 
 - (void)startVodPlayWithParamsParams:(nonnull TXPlayInfoParamsPlayerMsg *)params error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
@@ -1076,6 +1192,10 @@ static const int uninitialized = -1;
 
 - (void)setPlayerViewRenderViewId:(NSInteger)renderViewId error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     FTXLOGI(@"setPlayerView, renderViewId:%ld", renderViewId);
+    if (self.isDestroyed) {
+        FTXLOGW(@"vodPlayer setPlayerView called after destroyed, ignore");
+        return;
+    }
     FTXRenderView *renderView = [self.renderViewFactory findViewById:renderViewId];
     if (nil != renderView) {
         self.curRenderView = renderView;
@@ -1087,7 +1207,23 @@ static const int uninitialized = -1;
     }
 }
 
+- (void)setAutoPictureInPictureEnabledIsEnabled:(BOOL)isEnabled error:(FlutterError * _Nullable __autoreleasing *)error {
+    self.autoPictureInPictureEnabled = isEnabled;
+    if (@available(iOS 15.0, *)) {
+        FTXVodPictureInPictureController *pictureInPictureController = [self customPictureInPictureController];
+        pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = isEnabled;
+        if (isEnabled) {
+            [pictureInPictureController attachToHostView:self.customPipHostView];
+        }
+    }
+    [self updateVideoProcessDelegate];
+}
+
 - (void)setRenderView:(FTXTextureView*)renderView {
+    if (self.isDestroyed) {
+        FTXLOGW(@"vodPlayer setRenderView called after destroyed, ignore");
+        return;
+    }
     if (nil != _txVodPlayer) {
         if (renderView != nil) {
             [_txVodPlayer setupVideoWidget:renderView insertIndex:0];

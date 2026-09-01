@@ -2,6 +2,7 @@ package com.tencent.vod.flutter.player.render.gl;
 
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 import android.opengl.Matrix;
 
 import com.tencent.liteav.base.util.LiteavLog;
@@ -33,31 +34,25 @@ public class FTXTextureRender {
             TXGlUtilVideo.createFloatBuffer(FULL_RECTANGLE_TEX_COORDS);
 
     private static final String VERTEX_SHADER =
-            "#version 300 es\n" +
-                    "uniform mat4 uMVPMatrix;\n" +
-                    "in vec4 aPosition;\n" +
-                    "in vec2 aTextureCoord;\n" +
-                    "out vec2 vTextureCoord;\n" +
+            "uniform mat4 uMVPMatrix;\n" +
+                    "attribute vec4 aPosition;\n" +
+                    "attribute vec2 aTextureCoord;\n" +
+                    "varying vec2 vTextureCoord;\n" +
                     "void main() {\n" +
                     "    gl_Position = uMVPMatrix * aPosition;\n" +
-                    "    vTextureCoord = aTextureCoord;\n" +
+                    "    vTextureCoord = aTextureCoord;\n" + // 核心修复：应用纹理矩阵
                     "}\n";
 
     private static final String VIDEO_FRAGMENT_SHADER =
-            "#version 300 es\n"
-                    + "#extension GL_OES_EGL_image_external_essl3 : require\n"
+            "#extension GL_OES_EGL_image_external : require\n"
                     + "precision mediump float;\n"
+                    + "varying vec2 vTextureCoord;\n"
                     + "uniform samplerExternalOES sTexture;\n"
-                    + "in vec2 vTextureCoord;\n"
-                    + "out vec4 outColor;\n"
                     + "void main() {\n"
                     + "    vec2 safeCoord = vTextureCoord;\n"
-                    + "    if (safeCoord.x > 0.99) {\n"
-                    + "        safeCoord.x = 0.99;\n"
-                    + "    }\n"
                     + "    safeCoord.x = clamp(safeCoord.x, 0.001, 0.999);\n"
                     + "    safeCoord.y = clamp(safeCoord.y, 0.001, 0.999);\n"
-                    + "    outColor = texture(sTexture, safeCoord);\n"
+                    + "    gl_FragColor = texture2D(sTexture, safeCoord);\n"
                     + "}\n";
 
     private final float[] projectionMatrix = new float[16];
@@ -88,10 +83,10 @@ public class FTXTextureRender {
      */
     public void surfaceCreated() {
         mVideoFragmentProgram = TXGlUtilVideo.createProgram(VERTEX_SHADER, VIDEO_FRAGMENT_SHADER);
-        maPositionHandle = GLES20.glGetAttribLocation(mVideoFragmentProgram, "aPosition");
-        maTexCoordHandle = GLES20.glGetAttribLocation(mVideoFragmentProgram, "aTextureCoord");
-        muMVPMatrixHandle = GLES20.glGetUniformLocation(mVideoFragmentProgram, "uMVPMatrix");
-        maTextureHandle = GLES20.glGetUniformLocation(mVideoFragmentProgram, "sTexture");
+        maPositionHandle = GLES30.glGetAttribLocation(mVideoFragmentProgram, "aPosition");
+        maTexCoordHandle = GLES30.glGetAttribLocation(mVideoFragmentProgram, "aTextureCoord");
+        muMVPMatrixHandle = GLES30.glGetUniformLocation(mVideoFragmentProgram, "uMVPMatrix");
+        maTextureHandle = GLES30.glGetUniformLocation(mVideoFragmentProgram, "sTexture");
 
         textureID[0] = initTex();
     }
@@ -101,8 +96,8 @@ public class FTXTextureRender {
     }
 
     public void deleteTexture() {
-        GLES20.glDeleteProgram(mVideoFragmentProgram);
-        GLES20.glDeleteTextures(1, textureID, 0);
+        GLES30.glDeleteProgram(mVideoFragmentProgram);
+        GLES30.glDeleteTextures(1, textureID, 0);
     }
 
     /**
@@ -112,16 +107,16 @@ public class FTXTextureRender {
      */
     public int initTex() {
         int[] tex = new int[1];
-        GLES20.glGenTextures(1, tex, 0);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, tex[0]);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+        GLES30.glGenTextures(1, tex, 0);
+        GLES30.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, tex[0]);
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameterf(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+        GLES30.glTexParameterf(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameterf(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+        GLES30.glTexParameterf(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
         return tex[0];
     }
@@ -199,47 +194,47 @@ public class FTXTextureRender {
         mergerMatrix();
     }
 
-    private void mergerMatrix() {
+    private synchronized void mergerMatrix() {
         // reset
         Matrix.setIdentityM(mResultMatrix, 0);
-        Matrix.multiplyMM(mResultMatrix, 0, projectionMatrix, 0, rotationMatrix , 0);
+        Matrix.multiplyMM(mResultMatrix, 0, projectionMatrix, 0, rotationMatrix, 0);
     }
 
     public void cleanDrawCache() {
-        GLES20.glViewport(0, 0, mPortWidth, mPortHeight);
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        GLES30.glViewport(0, 0, mPortWidth, mPortHeight);
+        GLES30.glClear(GLES20.GL_COLOR_BUFFER_BIT);
     }
 
     /**
      * Draws the external texture in SurfaceTexture onto the current EGL surface.
      */
-    public void drawFrame() {
+    public synchronized void drawFrame() {
         cleanDrawCache();
         // video frame
-        GLES20.glUseProgram(mVideoFragmentProgram);
+        GLES30.glUseProgram(mVideoFragmentProgram);
 
         // OpenGL rotates counterclockwise, here it needs to be modified to rotate clockwise
-        GLES20.glUniformMatrix4fv(muMVPMatrixHandle, 1, false, mResultMatrix, 0);
+        GLES30.glUniformMatrix4fv(muMVPMatrixHandle, 1, false, mResultMatrix, 0);
 
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureID[0]);
-        GLES20.glUniform1i(maTextureHandle, 0);
+        GLES30.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureID[0]);
+        GLES30.glUniform1i(maTextureHandle, 0);
 
         // Enable the "aPosition" vertex attribute.
-        GLES20.glEnableVertexAttribArray(maPositionHandle);
+        GLES30.glEnableVertexAttribArray(maPositionHandle);
         // Connect vertexBuffer to "aPosition".
-        GLES20.glVertexAttribPointer(maPositionHandle, 3,
+        GLES30.glVertexAttribPointer(maPositionHandle, 3,
                 GLES20.GL_FLOAT, false, 3 * FLOAT_SIZE_BYTES, FULL_RECTANGLE_BUF);
         // Enable the "aTextureCoord" vertex attribute.
-        GLES20.glEnableVertexAttribArray(maTexCoordHandle);
+        GLES30.glEnableVertexAttribArray(maTexCoordHandle);
         // Connect texBuffer to "aTextureCoord".
-        GLES20.glVertexAttribPointer(maTexCoordHandle, 4,
+        GLES30.glVertexAttribPointer(maTexCoordHandle, 4,
                 GLES20.GL_FLOAT, false, 4 * FLOAT_SIZE_BYTES, FULL_RECTANGLE_TEX_BUF);
         // Draw the rect.
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        GLES30.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
         // Done -- disable vertex array, texture, and program.
-        GLES20.glDisableVertexAttribArray(maPositionHandle);
-        GLES20.glDisableVertexAttribArray(maTexCoordHandle);
-        GLES20.glUseProgram(0);
+        GLES30.glDisableVertexAttribArray(maPositionHandle);
+        GLES30.glDisableVertexAttribArray(maTexCoordHandle);
+        GLES30.glUseProgram(0);
     }
 }

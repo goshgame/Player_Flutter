@@ -19,16 +19,14 @@ import android.provider.Settings;
 import android.provider.Settings.SettingNotFoundException;
 import android.text.TextUtils;
 import android.util.SparseArray;
-import android.view.OrientationEventListener;
+import android.view.Surface;
 import android.view.Window;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 
 import com.tencent.liteav.base.util.LiteavLog;
 import com.tencent.rtmp.TXLiveBase;
-import com.tencent.rtmp.TXLiveBaseListener;
 import com.tencent.rtmp.TXPlayerGlobalSetting;
 import com.tencent.vod.flutter.common.FTXPlayerConstants;
 import com.tencent.vod.flutter.messages.FtxMessages;
@@ -43,6 +41,9 @@ import com.tencent.vod.flutter.messages.FtxMessages.TXFlutterSuperPlayerPluginAP
 import com.tencent.vod.flutter.player.FTXBasePlayer;
 import com.tencent.vod.flutter.player.FTXLivePlayer;
 import com.tencent.vod.flutter.player.FTXVodPlayer;
+import com.tencent.vod.flutter.player.render.FTXPlayerRenderHost;
+import com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost;
+import com.tencent.vod.flutter.tools.FTXContextWrapper;
 import com.tencent.vod.flutter.tools.TXCommonUtil;
 import com.tencent.vod.flutter.tools.TXFlutterEngineHolder;
 import com.tencent.vod.flutter.ui.TXAndroid12BridgeService;
@@ -57,11 +58,11 @@ import java.util.Map;
 import java.util.Set;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.view.TextureRegistry;
-import io.flutter.embedding.engine.plugins.activity.ActivityAware;
-import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 
 /**
  * SuperPlayerPlugin
@@ -87,44 +88,26 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     private FTXAudioManager mTxAudioManager;
     private FTXPIPManager mTxPipManager;
 
-    private OrientationEventListener mOrientationManager;
     private int mCurrentOrientation = FTXEvent.ORIENTATION_PORTRAIT_UP;
     private boolean mIsBrightnessObserverRegistered = false;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private FtxMessages.TXPluginFlutterAPI mPluginApi;
     private FTXRenderViewFactory mRenderViewFactory;
-
-    // Texture 后端通道与缓存
     private MethodChannel mTextureChannel;
-    private final Map<Integer, TextureEntryHolder> mTextureEntries = new HashMap<>();
-    // 单例引用，便于播放器回调分辨率时更新 Texture 的默认缓冲尺寸
-    private static SuperPlayerPlugin sInstance;
+    private final SparseArray<TextureEntryHolder> mTextureEntries = new SparseArray<>();
 
-    /**
-     * 保存每个 playerId 对应的 Flutter Texture 资源，便于释放和复用。
-     */
     private static final class TextureEntryHolder {
         final TextureRegistry.SurfaceTextureEntry entry;
-        final android.view.Surface surface;
-        final long id;
+        final Surface surface;
 
         TextureEntryHolder(TextureRegistry.SurfaceTextureEntry entry) {
             this.entry = entry;
-            this.surface = new android.view.Surface(entry.surfaceTexture());
-            this.id = entry.id();
+            surface = new Surface(entry.surfaceTexture());
         }
 
         void release() {
-            try {
-                surface.release();
-            } catch (Throwable t) {
-                // ignore
-            }
-            try {
-                entry.release();
-            } catch (Throwable t) {
-                // ignore
-            }
+            surface.release();
+            entry.release();
         }
     }
 
@@ -149,76 +132,9 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         }
     };
 
-    private final TXLiveBaseListener mSDKEvent = new TXLiveBaseListener() {
-        @Override
-        public void onLog(int level, String module, String liteavLog) {
-            super.onLog(level, module, liteavLog);
-//            mMainHandler.post(new Runnable() {
-//                @Override
-//                public void run() {
-//                    Bundle params = new Bundle();
-//                    params.putInt(FTXEvent.EVENT_LOG_LEVEL, level);
-//                    params.putString(FTXEvent.EVENT_LOG_MODULE, module);
-//                    params.putString(FTXEvent.EVENT_LOG_MSG, LiteavLog);
-//                    mEventSink.success(getParams(FTXEvent.EVENT_ON_LOG, params));
-//                }
-//            });
-
-            // this may be too busy, so currently do not throw on the Flutter side
-        }
-
-        @Override
-        public void onUpdateNetworkTime(int errCode, String errMsg) {
-            super.onUpdateNetworkTime(errCode, errMsg);
-//            mMainHandler.post(new Runnable() {
-//                @Override
-//                public void run() {
-//                    Bundle params = new Bundle();
-//                    params.putInt(FTXEvent.EVENT_ERR_CODE, errCode);
-//                    params.putString(FTXEvent.EVENT_ERR_MSG, errMsg);
-//                    mEventSink.success(getParams(FTXEvent.EVENT_ON_UPDATE_NETWORK_TIME, params));
-//                }
-//            });
-            // This will be opened in a subsequent version
-        }
-
-        @Override
-        public void onLicenceLoaded(int result, String reason) {
-            super.onLicenceLoaded(result, reason);
-            LiteavLog.v(TAG, "onLicenceLoaded,result:" + result + ",reason:" + reason);
-            mMainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Bundle params = new Bundle();
-                    params.putInt(FTXEvent.EVENT_RESULT, result);
-                    params.putString(FTXEvent.EVENT_REASON, reason);
-                    mPluginApi.onSDKListener(getParams(FTXEvent.EVENT_ON_LICENCE_LOADED, params),
-                            SuperPlayerPlugin.this);
-                }
-            });
-        }
-
-        @Override
-        public void onCustomHttpDNS(String hostName, List<String> ipList) {
-            super.onCustomHttpDNS(hostName, ipList);
-//            mMainHandler.post(new Runnable() {
-//                @Override
-//                public void run() {
-//                    Bundle params = new Bundle();
-//                    params.putString(FTXEvent.EVENT_HOST_NAME, hostName);
-//                    ArrayList<String> ipArrayList = new ArrayList<>(ipList);
-//                    params.putStringArrayList(FTXEvent.EVENT_IPS, ipArrayList);
-//                    mEventSink.success(getParams(FTXEvent.EVENT_ON_CUSTOM_HTTP_DNS, params));
-//                }
-//            });
-            // This will be opened in a subsequent version
-        }
-    };
-
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         LiteavLog.i(TAG, "onAttachedToEngine");
-        sInstance = this;
         mRenderViewFactory = new FTXRenderViewFactory(flutterPluginBinding.getBinaryMessenger());
         flutterPluginBinding
                 .getPlatformViewRegistry()
@@ -228,120 +144,134 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         TXFlutterNativeAPI.setUp(flutterPluginBinding.getBinaryMessenger(), this);
         mPluginApi = new FtxMessages.TXPluginFlutterAPI(flutterPluginBinding.getBinaryMessenger());
         mFlutterPluginBinding = flutterPluginBinding;
-        TXFlutterEngineHolder.getInstance().attachBindLife(flutterPluginBinding);
         // register download message channel
         mFTXDownloadManager = new FTXDownloadManager(mFlutterPluginBinding);
         registerReceiver();
-        TXLiveBase.setListener(mSDKEvent);
+        registerTextureChannel(flutterPluginBinding);
+        // Hand process-level hooks (TXLiveBase listener / ActivityLifecycle / orientation) to
+        // VodGlobalResource. It reference-counts across engines so only the first acquire wires
+        // up the global hooks and only the last release tears them down.
+        VodGlobalResource.getInstance().acquire(this, flutterPluginBinding);
+    }
 
-        // 注册 Texture 渲染后端通道（增量能力，不影响既有 Pigeon 通道）
-        mTextureChannel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(),
+    private void registerTextureChannel(FlutterPluginBinding binding) {
+        mTextureChannel = new MethodChannel(binding.getBinaryMessenger(),
                 "com.tencent.vod.flutter/texture");
-        mTextureChannel.setMethodCallHandler(new MethodChannel.MethodCallHandler() {
-            @Override
-            public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-                switch (call.method) {
-                    case "createTexture":
-                        handleCreateTexture(call, result);
-                        break;
-                    case "disposeTexture":
-                        handleDisposeTexture(call, result);
-                        break;
-                    default:
-                        result.notImplemented();
-                }
+        mTextureChannel.setMethodCallHandler((call, result) -> {
+            if ("createTexture".equals(call.method)) {
+                handleCreateTexture(call, result);
+            } else if ("disposeTexture".equals(call.method)) {
+                handleDisposeTexture(call, result);
+            } else {
+                result.notImplemented();
             }
         });
     }
 
-    public static SuperPlayerPlugin getInstance() {
-        return sInstance;
-    }
-
-    private void handleCreateTexture(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-        final Object pidObj = call.argument("playerId");
-        if (!(pidObj instanceof Integer)) {
-            LiteavLog.e(TAG, "createTexture bad_args: playerId required");
+    private void handleCreateTexture(MethodCall call, MethodChannel.Result result) {
+        Integer playerId = call.argument("playerId");
+        if (playerId == null) {
             result.error("bad_args", "playerId required", null);
             return;
         }
-        final int playerId = (Integer) pidObj;
-        final FTXBasePlayer base = mPlayers.get(playerId);
-        if (base == null) {
-            LiteavLog.e(TAG, "createTexture no_player: " + playerId);
+        FTXBasePlayer player = mPlayers.get(playerId);
+        if (player == null) {
             result.error("no_player", "player not found: " + playerId, null);
             return;
         }
-
-        // 如果已存在旧的 Texture，先释放
-        TextureEntryHolder old = mTextureEntries.remove(playerId);
-        if (old != null) {
-            try { old.release(); } catch (Throwable ignore) {}
+        if (!(player instanceof FTXPlayerRenderSurfaceHost)) {
+            result.error("unsupported_player", "Texture rendering only supports VOD players", null);
+            return;
         }
 
-        // 创建 Flutter 提供的 SurfaceTexture，并将 Surface 绑定到播放器
-        final TextureRegistry.SurfaceTextureEntry entry = mFlutterPluginBinding.getTextureRegistry().createSurfaceTexture();
-        final TextureEntryHolder holder = new TextureEntryHolder(entry);
+        disposeTexture(playerId);
+        TextureRegistry.SurfaceTextureEntry entry =
+                mFlutterPluginBinding.getTextureRegistry().createSurfaceTexture();
+        TextureEntryHolder holder = new TextureEntryHolder(entry);
         mTextureEntries.put(playerId, holder);
-
         try {
-            // 解除 PlatformView 绑定，切换为直接 Surface 输出
-            if (base instanceof com.tencent.vod.flutter.player.render.FTXPlayerRenderHost) {
-                ((com.tencent.vod.flutter.player.render.FTXPlayerRenderHost) base).setRenderView(null);
+            if (player instanceof FTXPlayerRenderHost) {
+                ((FTXPlayerRenderHost) player).setRenderView(null);
             }
-            if (base instanceof com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost) {
-                ((com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost) base).setSurface(holder.surface);
-            }
-            // 为新创建的 Texture 设置一个合理的默认缓冲尺寸，避免早期 1x1 造成的整屏单像素
-            try {
-                int fallbackW = 720; // 兜底宽
-                int fallbackH = 1280; // 兜底高
-                holder.entry.surfaceTexture().setDefaultBufferSize(fallbackW, fallbackH);
-                LiteavLog.i(TAG, "createTexture setDefaultBufferSize fallback " + fallbackW + "x" + fallbackH
-                        + ", playerId=" + playerId + ", textureId=" + holder.id);
-            } catch (Throwable ignore) {}
-            LiteavLog.i(TAG, "createTexture success, playerId=" + playerId + ", textureId=" + holder.id);
-            result.success((int) holder.id);
-        } catch (Throwable t) {
-            // 创建或绑定失败，回滚并返回错误，Flutter 端将回退 PlatformView
-            mTextureEntries.remove(playerId);
-            try { holder.release(); } catch (Throwable ignore) {}
-            LiteavLog.e(TAG, "createTexture failed: " + t);
-            result.error("create_failed", t.getMessage(), null);
+            ((FTXPlayerRenderSurfaceHost) player).setSurface(holder.surface);
+            entry.surfaceTexture().setDefaultBufferSize(720, 1280);
+            result.success(entry.id());
+        } catch (Throwable error) {
+            disposeTexture(playerId);
+            LiteavLog.e(TAG, "createTexture failed", error);
+            result.error("create_failed", error.getMessage(), null);
         }
     }
 
-    private void handleDisposeTexture(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-        final Object pidObj = call.argument("playerId");
-        if (!(pidObj instanceof Integer)) {
-            LiteavLog.e(TAG, "disposeTexture bad_args: playerId required");
+    private void handleDisposeTexture(MethodCall call, MethodChannel.Result result) {
+        Integer playerId = call.argument("playerId");
+        if (playerId == null) {
             result.error("bad_args", "playerId required", null);
             return;
         }
-        final int playerId = (Integer) pidObj;
-        TextureEntryHolder holder = mTextureEntries.remove(playerId);
-        if (holder != null) {
-            try { holder.release(); } catch (Throwable ignore) {}
-        }
-        // 释放时不强制恢复 PlatformView，由上层自行决定
-        LiteavLog.i(TAG, "disposeTexture, playerId=" + playerId);
+        disposeTexture(playerId);
         result.success(null);
     }
 
-    /**
-     * 在拿到视频真实分辨率后，更新对应 playerId 的 Texture 默认缓冲尺寸，规避 1x1 问题。
-     */
-    public void updateTextureBufferSizeByPlayer(int playerId, int videoW, int videoH) {
-        if (playerId <= 0 || videoW <= 0 || videoH <= 0) return;
+    private void disposeTexture(int playerId) {
         TextureEntryHolder holder = mTextureEntries.get(playerId);
-        if (holder == null) return;
-        try {
-            holder.entry.surfaceTexture().setDefaultBufferSize(videoW, videoH);
-            LiteavLog.i(TAG, "updateTextureBufferSizeByPlayer setDefaultBufferSize " + videoW + "x" + videoH
-                    + ", playerId=" + playerId + ", textureId=" + holder.id);
-        } catch (Throwable t) {
-            LiteavLog.e(TAG, "updateTextureBufferSizeByPlayer error: " + t);
+        if (holder == null) {
+            return;
         }
+        mTextureEntries.remove(playerId);
+        try {
+            FTXBasePlayer player = mPlayers.get(playerId);
+            if (player instanceof FTXPlayerRenderSurfaceHost) {
+                ((FTXPlayerRenderSurfaceHost) player).setSurface(null);
+            }
+            holder.release();
+        } catch (Throwable error) {
+            LiteavLog.w(TAG, "disposeTexture failed: " + error.getMessage());
+        }
+    }
+
+    private void updateTextureBufferSize(int playerId, int width, int height) {
+        TextureEntryHolder holder = mTextureEntries.get(playerId);
+        if (holder == null || width <= 0 || height <= 0) {
+            return;
+        }
+        holder.entry.surfaceTexture().setDefaultBufferSize(width, height);
+    }
+
+    // ------------- Global broadcast callbacks (invoked by VodGlobalResource) -------------
+
+    /** Forwards the process-level License-loaded event into this engine's Dart side. */
+    public void dispatchLicenceLoaded(final int result, final String reason) {
+        mMainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mPluginApi == null) {
+                    return;
+                }
+                Bundle params = new Bundle();
+                params.putInt(FTXEvent.EVENT_RESULT, result);
+                params.putString(FTXEvent.EVENT_REASON, reason);
+                mPluginApi.onSDKListener(getParams(FTXEvent.EVENT_ON_LICENCE_LOADED, params),
+                        SuperPlayerPlugin.this);
+            }
+        });
+    }
+
+    /** Forwards the process-level orientation change event into this engine's Dart side. */
+    public void dispatchOrientationChanged(final int orientation) {
+        mCurrentOrientation = orientation;
+        mMainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mPluginApi == null) {
+                    return;
+                }
+                Bundle bundle = new Bundle();
+                bundle.putInt(FTXEvent.EXTRA_NAME_ORIENTATION, orientation);
+                mPluginApi.onNativeEvent(getParams(FTXEvent.EVENT_ORIENTATION_CHANGED, bundle),
+                        SuperPlayerPlugin.this);
+            }
+        });
     }
 
     /******* native method call start *******/
@@ -357,7 +287,8 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     @NonNull
     @Override
     public PlayerMsg createVodPlayer(@NonNull Boolean onlyAudio) {
-        FTXVodPlayer player = new FTXVodPlayer(mFlutterPluginBinding, getPipManager(), mRenderViewFactory, onlyAudio);
+        FTXVodPlayer player = new FTXVodPlayer(mFlutterPluginBinding, getPipManager(), mRenderViewFactory,
+                onlyAudio, this::updateTextureBufferSize);
         int playerId = player.getPlayerId();
         mPlayers.append(playerId, player);
         PlayerMsg playerMsg = new PlayerMsg();
@@ -390,6 +321,7 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         if (null != playerId.getPlayerId()) {
             int intPlayerId = playerId.getPlayerId().intValue();
             LiteavLog.i(TAG, "releasePlayer :" + intPlayerId);
+            disposeTexture(intPlayerId);
             FTXBasePlayer player = mPlayers.get(intPlayerId);
             if (player != null) {
                 LiteavLog.i(TAG, "releasePlayer start destroy player :" + intPlayerId);
@@ -471,7 +403,8 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     @NonNull
     @Override
     public BoolMsg startVideoOrientationService() {
-        boolean setResult = innerStartVideoOrientationService();
+        boolean setResult = VodGlobalResource.getInstance()
+                .startOrientationService(mFlutterPluginBinding.getApplicationContext());
         BoolMsg boolMsg = new BoolMsg();
         boolMsg.setValue(setResult);
         return boolMsg;
@@ -500,38 +433,6 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
 
     /******* native method call end *******/
 
-
-    private boolean innerStartVideoOrientationService() {
-        if (null == mFlutterPluginBinding) {
-            return false;
-        }
-        if (null == mOrientationManager) {
-            try {
-                mOrientationManager = new OrientationEventListener(mFlutterPluginBinding.getApplicationContext()) {
-                    @Override
-                    public void onOrientationChanged(int orientation) {
-                        if (isDeviceAutoRotateOn()) {
-                            LiteavLog.v(TAG, "onOrientationChanged:" + orientation);
-                            int orientationEvent = getOrientationEvent(orientation);
-                            if (orientationEvent != mCurrentOrientation) {
-                                LiteavLog.v(TAG, "orientationEvent changed:" + orientationEvent);
-                                mCurrentOrientation = orientationEvent;
-                                Bundle bundle = new Bundle();
-                                bundle.putInt(FTXEvent.EXTRA_NAME_ORIENTATION, orientationEvent);
-                                mPluginApi.onNativeEvent(getParams(FTXEvent.EVENT_ORIENTATION_CHANGED, bundle)
-                                        , SuperPlayerPlugin.this);
-                            }
-                        }
-                    }
-                };
-                mOrientationManager.enable();
-            } catch (Exception e) {
-                LiteavLog.e(TAG, "innerStartVideoOrientationService error", e);
-                return false;
-            }
-        }
-        return true;
-    }
 
     private int getOrientationEvent(int orientation) {
         int orientationEvent = mCurrentOrientation;
@@ -631,14 +532,11 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
         LiteavLog.i(TAG, "onDetachedFromEngine");
-        sInstance = null;
         mFTXDownloadManager.destroy();
-        if (null != mOrientationManager) {
-            mOrientationManager.disable();
-        }
         if (null != mTxPipManager) {
-            mTxPipManager.releaseActivityListener();
+            // 先退出再断监听，保证 Dart 侧能收到 EVENT_PIP_MODE_ALREADY_EXIT
             mTxPipManager.exitCurrentPip();
+            mTxPipManager.releaseActivityListener();
         }
         // Close the solution to the problem of the picture-in-picture click restore
         // failure on some versions of Android 12.
@@ -646,8 +544,17 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         Intent serviceIntent = new Intent(binding.getApplicationContext(), TXAndroid12BridgeService.class);
         binding.getApplicationContext().stopService(serviceIntent);
         unregisterReceiver();
-        TXFlutterEngineHolder.getInstance().destroy(binding);
-        TXLiveBase.setListener(null);
+        releaseAllPlayer();
+        for (int i = mTextureEntries.size() - 1; i >= 0; i--) {
+            disposeTexture(mTextureEntries.keyAt(i));
+        }
+        if (mTextureChannel != null) {
+            mTextureChannel.setMethodCallHandler(null);
+            mTextureChannel = null;
+        }
+        // Release global hooks last so that we are still reachable while we process our own
+        // teardown (in case something synchronous fires during release).
+        VodGlobalResource.getInstance().release(this, binding);
         mFlutterPluginBinding = null;
     }
 
@@ -705,8 +612,8 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
         mVolumeBroadcastReceiver = new VolumeBroadcastReceiver(mPluginApi);
         IntentFilter filter = new IntentFilter();
         filter.addAction(VOLUME_CHANGED_ACTION);
-        ContextCompat.registerReceiver(mFlutterPluginBinding.getApplicationContext(), mVolumeBroadcastReceiver, filter,
-                ContextCompat.RECEIVER_NOT_EXPORTED);
+        FTXContextWrapper.registerReceiverForNotExport(mFlutterPluginBinding.getApplicationContext(),
+                mVolumeBroadcastReceiver, filter);
     }
 
     public void enableBrightnessObserver(boolean enable) {
@@ -725,6 +632,19 @@ public class SuperPlayerPlugin implements FlutterPlugin, ActivityAware,
                 mIsBrightnessObserverRegistered = false;
             }
         }
+    }
+
+    public synchronized void releaseAllPlayer() {
+        LiteavLog.i(TAG, "start releaseAllPlayer");
+        for (int i = 0; i < mPlayers.size(); i++) {
+            FTXBasePlayer player = mPlayers.valueAt(i);
+            if (null != player) {
+                LiteavLog.i(TAG, "releasePlayer start destroy player :" + player.getPlayerId());
+                disposeTexture(player.getPlayerId());
+                player.destroy();
+            }
+        }
+        mPlayers.clear();
     }
 
     /**

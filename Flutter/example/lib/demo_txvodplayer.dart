@@ -26,7 +26,7 @@ class _DemoTXVodPlayerState extends State<DemoTXVodPlayer> with WidgetsBindingOb
   int _volume = 100;
   List _supportedBitrates = [];
   int _curBitrateIndex = 0;
-  String _url = "http://1500005830.vod2.myqcloud.com/43843ec0vodtranscq1500005830/48d0f1f9387702299774251236/adp.10.m3u8";
+  String _url = "https://1500005830.vod2.myqcloud.com/43843ec0vodtranscq1500005830/48d0f1f9387702299774251236/adp.10.m3u8";
   TXPlayInfoParams? _videoParams;
   int _appId = 0;
   String _fileId = "";
@@ -36,7 +36,7 @@ class _DemoTXVodPlayerState extends State<DemoTXVodPlayer> with WidgetsBindingOb
   bool _isPlaying = false;
   StreamSubscription? playEventSubscription;
   StreamSubscription? playNetEventSubscription;
-  FTXAndroidRenderViewType _renderType = FTXAndroidRenderViewType.SURFACE_VIEW;
+  FTXAndroidRenderViewType _renderType = FTXAndroidRenderViewType.TEXTURE_VIEW;
   FTXPlayerRenderMode _renderMode = FTXPlayerRenderMode.ADJUST_RESOLUTION;
 
   GlobalKey<VideoSliderViewState> progressSliderKey = GlobalKey();
@@ -54,6 +54,8 @@ class _DemoTXVodPlayerState extends State<DemoTXVodPlayer> with WidgetsBindingOb
       final int code = event["event"];
       if (code == TXVodPlayEvent.PLAY_EVT_RCV_FIRST_I_FRAME) {
         EasyLoading.dismiss();
+        _controller.publishVideo();
+        _controller.publishAudio();
         _supportedBitrates = (await _controller.getSupportedBitrates())!;
       } else if (code== TXVodPlayEvent.PLAY_EVT_PLAY_PROGRESS) {
         _isPlaying = true;
@@ -75,6 +77,7 @@ class _DemoTXVodPlayerState extends State<DemoTXVodPlayer> with WidgetsBindingOb
 
     await _controller.setConfig(FTXVodPlayConfig());
     await _controller.setRenderMode(_renderMode);
+    await _controller.enableTRTC(true);
     await _controller.startVodPlay(_url);
   }
 

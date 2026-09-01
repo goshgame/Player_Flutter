@@ -1,14 +1,13 @@
 package com.tencent.vod.flutter.ui.render;
 
 import com.tencent.vod.flutter.player.render.FTXPlayerRenderSurfaceHost;
+import com.tencent.vod.flutter.player.render.gl.FTXEGLRender;
 
 public interface FTXRenderCarrier {
 
     void bindPlayer(FTXPlayerRenderSurfaceHost surfaceHost);
 
     void clearLastImg();
-
-    void setVisibility(int visibility);
 
     void notifyVideoResolutionChanged(int videoWidth, int videoHeight);
 
@@ -20,11 +19,13 @@ public interface FTXRenderCarrier {
 
     void destroyRender();
 
-    void reDrawVod();
+    void reDrawVod(boolean isForcePullFrame);
 
     void addSurfaceTextureListener(FTXCarrierSurfaceListener listener);
 
     void removeSurfaceTextureListener(FTXCarrierSurfaceListener listener);
 
     void removeAllSurfaceListener();
+
+    void enableTRTCCloud(boolean enable, FTXEGLRender.OnFrameCopyListener listener);
 }

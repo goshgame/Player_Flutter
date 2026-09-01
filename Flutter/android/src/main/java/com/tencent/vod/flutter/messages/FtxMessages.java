@@ -39,7 +39,7 @@ public class FtxMessages {
     /** The error details. Must be a datatype supported by the api codec. */
     public final Object details;
 
-    public FlutterError(@NonNull String code, @Nullable String message, @Nullable Object details) 
+    public FlutterError(@NonNull String code, @Nullable String message, @Nullable Object details)
     {
       super(message);
       this.code = code;
@@ -2081,24 +2081,35 @@ public class FtxMessages {
       return isResourceBroken;
     }
 
-    public void setIsResourceBroken(@Nullable Boolean setterArg) {
-      this.isResourceBroken = setterArg;
-    }
+  public void setIsResourceBroken(@Nullable Boolean setterArg) {
+    this.isResourceBroken = setterArg;
+  }
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) { return true; }
-      if (o == null || getClass() != o.getClass()) { return false; }
-      TXVodDownloadMediaMsg that = (TXVodDownloadMediaMsg) o;
-      return Objects.equals(playPath, that.playPath) && Objects.equals(progress, that.progress) && Objects.equals(downloadState, that.downloadState) && Objects.equals(userName, that.userName) && Objects.equals(duration, that.duration) && Objects.equals(playableDuration, that.playableDuration) && Objects.equals(size, that.size) && Objects.equals(downloadSize, that.downloadSize) && Objects.equals(url, that.url) && Objects.equals(appId, that.appId) && Objects.equals(fileId, that.fileId) && Objects.equals(pSign, that.pSign) && Objects.equals(quality, that.quality) && Objects.equals(token, that.token) && Objects.equals(speed, that.speed) && Objects.equals(isResourceBroken, that.isResourceBroken);
-    }
+  /** mp4加密等级 */
+  private @Nullable Long encryptedMp4Level;
+
+  public @Nullable Long getEncryptedMp4Level() {
+    return encryptedMp4Level;
+  }
+
+  public void setEncryptedMp4Level(@Nullable Long setterArg) {
+    this.encryptedMp4Level = setterArg;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) { return true; }
+    if (o == null || getClass() != o.getClass()) { return false; }
+    TXVodDownloadMediaMsg that = (TXVodDownloadMediaMsg) o;
+    return Objects.equals(playPath, that.playPath) && Objects.equals(progress, that.progress) && Objects.equals(downloadState, that.downloadState) && Objects.equals(userName, that.userName) && Objects.equals(duration, that.duration) && Objects.equals(playableDuration, that.playableDuration) && Objects.equals(size, that.size) && Objects.equals(downloadSize, that.downloadSize) && Objects.equals(url, that.url) && Objects.equals(appId, that.appId) && Objects.equals(fileId, that.fileId) && Objects.equals(pSign, that.pSign) && Objects.equals(quality, that.quality) && Objects.equals(token, that.token) && Objects.equals(speed, that.speed) && Objects.equals(isResourceBroken, that.isResourceBroken) && Objects.equals(encryptedMp4Level, that.encryptedMp4Level);
+  }
 
     @Override
     public int hashCode() {
-      return Objects.hash(playPath, progress, downloadState, userName, duration, playableDuration, size, downloadSize, url, appId, fileId, pSign, quality, token, speed, isResourceBroken);
-    }
+    return Objects.hash(playPath, progress, downloadState, userName, duration, playableDuration, size, downloadSize, url, appId, fileId, pSign, quality, token, speed, isResourceBroken, encryptedMp4Level);
+  }
 
-    public static final class Builder {
+  public static final class Builder {
 
       private @Nullable String playPath;
 
@@ -2222,37 +2233,46 @@ public class FtxMessages {
 
       private @Nullable Boolean isResourceBroken;
 
-      @CanIgnoreReturnValue
-      public @NonNull Builder setIsResourceBroken(@Nullable Boolean setterArg) {
-        this.isResourceBroken = setterArg;
-        return this;
-      }
+    @CanIgnoreReturnValue
+    public @NonNull Builder setIsResourceBroken(@Nullable Boolean setterArg) {
+      this.isResourceBroken = setterArg;
+      return this;
+    }
 
-      public @NonNull TXVodDownloadMediaMsg build() {
-        TXVodDownloadMediaMsg pigeonReturn = new TXVodDownloadMediaMsg();
-        pigeonReturn.setPlayPath(playPath);
-        pigeonReturn.setProgress(progress);
-        pigeonReturn.setDownloadState(downloadState);
-        pigeonReturn.setUserName(userName);
-        pigeonReturn.setDuration(duration);
-        pigeonReturn.setPlayableDuration(playableDuration);
-        pigeonReturn.setSize(size);
-        pigeonReturn.setDownloadSize(downloadSize);
-        pigeonReturn.setUrl(url);
-        pigeonReturn.setAppId(appId);
-        pigeonReturn.setFileId(fileId);
-        pigeonReturn.setPSign(pSign);
-        pigeonReturn.setQuality(quality);
-        pigeonReturn.setToken(token);
-        pigeonReturn.setSpeed(speed);
-        pigeonReturn.setIsResourceBroken(isResourceBroken);
-        return pigeonReturn;
-      }
+    private @Nullable Long encryptedMp4Level;
+
+    @CanIgnoreReturnValue
+    public @NonNull Builder setEncryptedMp4Level(@Nullable Long setterArg) {
+      this.encryptedMp4Level = setterArg;
+      return this;
+    }
+
+    public @NonNull TXVodDownloadMediaMsg build() {
+      TXVodDownloadMediaMsg pigeonReturn = new TXVodDownloadMediaMsg();
+      pigeonReturn.setPlayPath(playPath);
+      pigeonReturn.setProgress(progress);
+      pigeonReturn.setDownloadState(downloadState);
+      pigeonReturn.setUserName(userName);
+      pigeonReturn.setDuration(duration);
+      pigeonReturn.setPlayableDuration(playableDuration);
+      pigeonReturn.setSize(size);
+      pigeonReturn.setDownloadSize(downloadSize);
+      pigeonReturn.setUrl(url);
+      pigeonReturn.setAppId(appId);
+      pigeonReturn.setFileId(fileId);
+      pigeonReturn.setPSign(pSign);
+      pigeonReturn.setQuality(quality);
+      pigeonReturn.setToken(token);
+      pigeonReturn.setSpeed(speed);
+      pigeonReturn.setIsResourceBroken(isResourceBroken);
+      pigeonReturn.setEncryptedMp4Level(encryptedMp4Level);
+      return pigeonReturn;
+    }
     }
 
     @NonNull
     ArrayList<Object> toList() {
-      ArrayList<Object> toListResult = new ArrayList<>(16);
+      ArrayList<Object> toListResult = new ArrayList<>(17);
       toListResult.add(playPath);
       toListResult.add(progress);
       toListResult.add(downloadState);
@@ -2269,6 +2289,7 @@ public class FtxMessages {
       toListResult.add(token);
       toListResult.add(speed);
       toListResult.add(isResourceBroken);
+      toListResult.add(encryptedMp4Level);
       return toListResult;
     }
 
@@ -2306,6 +2327,8 @@ public class FtxMessages {
       pigeonResult.setSpeed((Long) speed);
       Object isResourceBroken = pigeonVar_list.get(15);
       pigeonResult.setIsResourceBroken((Boolean) isResourceBroken);
+      Object encryptedMp4Level = pigeonVar_list.get(16);
+      pigeonResult.setEncryptedMp4Level((Long) encryptedMp4Level);
       return pigeonResult;
     }
   }
@@ -2818,22 +2841,32 @@ public class FtxMessages {
       return preferredResolution;
     }
 
-    public void setPreferredResolution(@Nullable Long setterArg) {
-      this.preferredResolution = setterArg;
-    }
+  public void setPreferredResolution(@Nullable Long setterArg) {
+    this.preferredResolution = setterArg;
+  }
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) { return true; }
-      if (o == null || getClass() != o.getClass()) { return false; }
-      PreLoadMsg that = (PreLoadMsg) o;
-      return Objects.equals(playUrl, that.playUrl) && Objects.equals(preloadSizeMB, that.preloadSizeMB) && Objects.equals(preferredResolution, that.preferredResolution);
-    }
+  private @Nullable Long encryptedMp4Level;
 
-    @Override
-    public int hashCode() {
-      return Objects.hash(playUrl, preloadSizeMB, preferredResolution);
-    }
+  public @Nullable Long getEncryptedMp4Level() {
+    return encryptedMp4Level;
+  }
+
+  public void setEncryptedMp4Level(@Nullable Long setterArg) {
+    this.encryptedMp4Level = setterArg;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) { return true; }
+    if (o == null || getClass() != o.getClass()) { return false; }
+    PreLoadMsg that = (PreLoadMsg) o;
+    return Objects.equals(playUrl, that.playUrl) && Objects.equals(preloadSizeMB, that.preloadSizeMB) && Objects.equals(preferredResolution, that.preferredResolution) && Objects.equals(encryptedMp4Level, that.encryptedMp4Level);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(playUrl, preloadSizeMB, preferredResolution, encryptedMp4Level);
+  }
 
     public static final class Builder {
 
@@ -2855,40 +2888,52 @@ public class FtxMessages {
 
       private @Nullable Long preferredResolution;
 
-      @CanIgnoreReturnValue
-      public @NonNull Builder setPreferredResolution(@Nullable Long setterArg) {
-        this.preferredResolution = setterArg;
-        return this;
-      }
-
-      public @NonNull PreLoadMsg build() {
-        PreLoadMsg pigeonReturn = new PreLoadMsg();
-        pigeonReturn.setPlayUrl(playUrl);
-        pigeonReturn.setPreloadSizeMB(preloadSizeMB);
-        pigeonReturn.setPreferredResolution(preferredResolution);
-        return pigeonReturn;
-      }
+    @CanIgnoreReturnValue
+    public @NonNull Builder setPreferredResolution(@Nullable Long setterArg) {
+      this.preferredResolution = setterArg;
+      return this;
     }
 
-    @NonNull
-    ArrayList<Object> toList() {
-      ArrayList<Object> toListResult = new ArrayList<>(3);
-      toListResult.add(playUrl);
-      toListResult.add(preloadSizeMB);
-      toListResult.add(preferredResolution);
-      return toListResult;
+    private @Nullable Long encryptedMp4Level;
+
+    @CanIgnoreReturnValue
+    public @NonNull Builder setEncryptedMp4Level(@Nullable Long setterArg) {
+      this.encryptedMp4Level = setterArg;
+      return this;
     }
 
-    static @NonNull PreLoadMsg fromList(@NonNull ArrayList<Object> pigeonVar_list) {
-      PreLoadMsg pigeonResult = new PreLoadMsg();
-      Object playUrl = pigeonVar_list.get(0);
-      pigeonResult.setPlayUrl((String) playUrl);
-      Object preloadSizeMB = pigeonVar_list.get(1);
-      pigeonResult.setPreloadSizeMB((Double) preloadSizeMB);
-      Object preferredResolution = pigeonVar_list.get(2);
-      pigeonResult.setPreferredResolution((Long) preferredResolution);
-      return pigeonResult;
+    public @NonNull PreLoadMsg build() {
+      PreLoadMsg pigeonReturn = new PreLoadMsg();
+      pigeonReturn.setPlayUrl(playUrl);
+      pigeonReturn.setPreloadSizeMB(preloadSizeMB);
+      pigeonReturn.setPreferredResolution(preferredResolution);
+      pigeonReturn.setEncryptedMp4Level(encryptedMp4Level);
+      return pigeonReturn;
     }
+  }
+
+  @NonNull
+  ArrayList<Object> toList() {
+    ArrayList<Object> toListResult = new ArrayList<>(4);
+    toListResult.add(playUrl);
+    toListResult.add(preloadSizeMB);
+    toListResult.add(preferredResolution);
+    toListResult.add(encryptedMp4Level);
+    return toListResult;
+  }
+
+  static @NonNull PreLoadMsg fromList(@NonNull ArrayList<Object> pigeonVar_list) {
+    PreLoadMsg pigeonResult = new PreLoadMsg();
+    Object playUrl = pigeonVar_list.get(0);
+    pigeonResult.setPlayUrl((String) playUrl);
+    Object preloadSizeMB = pigeonVar_list.get(1);
+    pigeonResult.setPreloadSizeMB((Double) preloadSizeMB);
+    Object preferredResolution = pigeonVar_list.get(2);
+    pigeonResult.setPreferredResolution((Long) preferredResolution);
+    Object encryptedMp4Level = pigeonVar_list.get(3);
+    pigeonResult.setEncryptedMp4Level((Long) encryptedMp4Level);
+    return pigeonResult;
+  }
   }
 
   /** Generated class from Pigeon that represents data sent in messages. */
@@ -2969,22 +3014,32 @@ public class FtxMessages {
       return httpHeader;
     }
 
-    public void setHttpHeader(@Nullable Map<String, String> setterArg) {
-      this.httpHeader = setterArg;
-    }
+  public void setHttpHeader(@Nullable Map<String, String> setterArg) {
+    this.httpHeader = setterArg;
+  }
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) { return true; }
-      if (o == null || getClass() != o.getClass()) { return false; }
-      PreLoadInfoMsg that = (PreLoadInfoMsg) o;
-      return Objects.equals(appId, that.appId) && Objects.equals(fileId, that.fileId) && Objects.equals(pSign, that.pSign) && Objects.equals(playUrl, that.playUrl) && Objects.equals(preloadSizeMB, that.preloadSizeMB) && Objects.equals(preferredResolution, that.preferredResolution) && Objects.equals(tmpPreloadTaskId, that.tmpPreloadTaskId) && Objects.equals(httpHeader, that.httpHeader);
-    }
+  private @Nullable Long encryptedMp4Level;
 
-    @Override
-    public int hashCode() {
-      return Objects.hash(appId, fileId, pSign, playUrl, preloadSizeMB, preferredResolution, tmpPreloadTaskId, httpHeader);
-    }
+  public @Nullable Long getEncryptedMp4Level() {
+    return encryptedMp4Level;
+  }
+
+  public void setEncryptedMp4Level(@Nullable Long setterArg) {
+    this.encryptedMp4Level = setterArg;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) { return true; }
+    if (o == null || getClass() != o.getClass()) { return false; }
+    PreLoadInfoMsg that = (PreLoadInfoMsg) o;
+    return Objects.equals(appId, that.appId) && Objects.equals(fileId, that.fileId) && Objects.equals(pSign, that.pSign) && Objects.equals(playUrl, that.playUrl) && Objects.equals(preloadSizeMB, that.preloadSizeMB) && Objects.equals(preferredResolution, that.preferredResolution) && Objects.equals(tmpPreloadTaskId, that.tmpPreloadTaskId) && Objects.equals(httpHeader, that.httpHeader) && Objects.equals(encryptedMp4Level, that.encryptedMp4Level);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(appId, fileId, pSign, playUrl, preloadSizeMB, preferredResolution, tmpPreloadTaskId, httpHeader, encryptedMp4Level);
+  }
 
     public static final class Builder {
 
@@ -3046,39 +3101,49 @@ public class FtxMessages {
 
       private @Nullable Map<String, String> httpHeader;
 
-      @CanIgnoreReturnValue
-      public @NonNull Builder setHttpHeader(@Nullable Map<String, String> setterArg) {
-        this.httpHeader = setterArg;
-        return this;
-      }
-
-      public @NonNull PreLoadInfoMsg build() {
-        PreLoadInfoMsg pigeonReturn = new PreLoadInfoMsg();
-        pigeonReturn.setAppId(appId);
-        pigeonReturn.setFileId(fileId);
-        pigeonReturn.setPSign(pSign);
-        pigeonReturn.setPlayUrl(playUrl);
-        pigeonReturn.setPreloadSizeMB(preloadSizeMB);
-        pigeonReturn.setPreferredResolution(preferredResolution);
-        pigeonReturn.setTmpPreloadTaskId(tmpPreloadTaskId);
-        pigeonReturn.setHttpHeader(httpHeader);
-        return pigeonReturn;
-      }
+    @CanIgnoreReturnValue
+    public @NonNull Builder setHttpHeader(@Nullable Map<String, String> setterArg) {
+      this.httpHeader = setterArg;
+      return this;
     }
 
-    @NonNull
-    ArrayList<Object> toList() {
-      ArrayList<Object> toListResult = new ArrayList<>(8);
-      toListResult.add(appId);
-      toListResult.add(fileId);
-      toListResult.add(pSign);
-      toListResult.add(playUrl);
-      toListResult.add(preloadSizeMB);
-      toListResult.add(preferredResolution);
-      toListResult.add(tmpPreloadTaskId);
-      toListResult.add(httpHeader);
-      return toListResult;
+    private @Nullable Long encryptedMp4Level;
+
+    @CanIgnoreReturnValue
+    public @NonNull Builder setEncryptedMp4Level(@Nullable Long setterArg) {
+      this.encryptedMp4Level = setterArg;
+      return this;
     }
+
+    public @NonNull PreLoadInfoMsg build() {
+      PreLoadInfoMsg pigeonReturn = new PreLoadInfoMsg();
+      pigeonReturn.setAppId(appId);
+      pigeonReturn.setFileId(fileId);
+      pigeonReturn.setPSign(pSign);
+      pigeonReturn.setPlayUrl(playUrl);
+      pigeonReturn.setPreloadSizeMB(preloadSizeMB);
+      pigeonReturn.setPreferredResolution(preferredResolution);
+      pigeonReturn.setTmpPreloadTaskId(tmpPreloadTaskId);
+      pigeonReturn.setHttpHeader(httpHeader);
+      pigeonReturn.setEncryptedMp4Level(encryptedMp4Level);
+      return pigeonReturn;
+    }
+  }
+
+  @NonNull
+  ArrayList<Object> toList() {
+    ArrayList<Object> toListResult = new ArrayList<>(9);
+    toListResult.add(appId);
+    toListResult.add(fileId);
+    toListResult.add(pSign);
+    toListResult.add(playUrl);
+    toListResult.add(preloadSizeMB);
+    toListResult.add(preferredResolution);
+    toListResult.add(tmpPreloadTaskId);
+    toListResult.add(httpHeader);
+    toListResult.add(encryptedMp4Level);
+    return toListResult;
+  }
 
     static @NonNull PreLoadInfoMsg fromList(@NonNull ArrayList<Object> pigeonVar_list) {
       PreLoadInfoMsg pigeonResult = new PreLoadInfoMsg();
@@ -3098,6 +3163,8 @@ public class FtxMessages {
       pigeonResult.setTmpPreloadTaskId((Long) tmpPreloadTaskId);
       Object httpHeader = pigeonVar_list.get(7);
       pigeonResult.setHttpHeader((Map<String, String>) httpHeader);
+      Object encryptedMp4Level = pigeonVar_list.get(8);
+      pigeonResult.setEncryptedMp4Level((Long) encryptedMp4Level);
       return pigeonResult;
     }
   }
@@ -3919,13 +3986,13 @@ public class FtxMessages {
   /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
   public interface TXFlutterSuperPlayerPluginAPI {
 
-    @NonNull 
+    @NonNull
     StringMsg getPlatformVersion();
     /** 创建点播播放器 */
-    @NonNull 
+    @NonNull
     PlayerMsg createVodPlayer(@NonNull Boolean onlyAudio);
     /** 创建直播播放器 */
-    @NonNull 
+    @NonNull
     PlayerMsg createLivePlayer(@NonNull Boolean onlyAudio);
     /** 开关log输出 */
     void setConsoleEnabled(@NonNull BoolMsg enabled);
@@ -3949,17 +4016,17 @@ public class FtxMessages {
      * @param postfixPath 缓存目录
      * @return true 设置成功 false 设置失败
      */
-    @NonNull 
+    @NonNull
     BoolMsg setGlobalCacheFolderPath(@NonNull StringMsg postfixPath);
     /** 设置播放器资源缓存目录绝对路径，该方法会与 setGlobalCacheFolderPath(String postfixPath) 相互覆盖，调用其中一个即可 */
-    @NonNull 
+    @NonNull
     BoolMsg setGlobalCacheFolderCustomPath(@NonNull CachePathMsg cacheMsg);
     /** 设置全局license */
     void setGlobalLicense(@NonNull LicenseMsg licenseMsg);
     /** 设置log输出级别 [TXLogLevel] */
     void setLogLevel(@NonNull IntMsg logLevel);
     /** 获取依赖Native端的 LiteAVSDK 的版本 */
-    @NonNull 
+    @NonNull
     StringMsg getLiteAVSDKVersion();
     /**
      *
@@ -3971,7 +4038,7 @@ public class FtxMessages {
      * @note 目标市场为中国大陆的客户请不要调用此接口，如果目标市场为海外用户，请通过技术支持联系我们，了解 env_config 的配置方法，以确保 App 遵守 GDPR 标准。
      *
      */
-    @NonNull 
+    @NonNull
     IntMsg setGlobalEnv(@NonNull StringMsg envConfig);
     /**
      *
@@ -3982,7 +4049,7 @@ public class FtxMessages {
      * @return true : 开启成功
      *         false : 开启失败，如开启过早，还未等到上下文初始化、获取sensor失败等原因
      */
-    @NonNull 
+    @NonNull
     BoolMsg startVideoOrientationService();
 
     void setUserId(@NonNull StringMsg msg);
@@ -4372,15 +4439,15 @@ public class FtxMessages {
     /** 恢复当前界面亮度 */
     void restorePageBrightness();
     /** 获得当前界面亮度 0.0 ~ 1.0 */
-    @NonNull 
+    @NonNull
     DoubleMsg getBrightness();
     /** 获取系统界面亮度，IOS系统与界面亮度一致，安卓可能会有差异 */
-    @NonNull 
+    @NonNull
     DoubleMsg getSysBrightness();
     /** 设置当前系统音量，0.0 ~ 1.0 */
     void setSystemVolume(@NonNull DoubleMsg volume);
     /** 获得当前系统音量，范围：0.0 ~ 1.0 */
-    @NonNull 
+    @NonNull
     DoubleMsg getSystemVolume();
     /** 释放音频焦点，只用于安卓端 */
     void abandonAudioFocus();
@@ -4394,7 +4461,7 @@ public class FtxMessages {
      *  -102  画中画权限关闭/设备不支持画中画
      *  -103  当前界面已销毁
      */
-    @NonNull 
+    @NonNull
     IntMsg isDeviceSupportPip();
     /**
      *
@@ -4639,7 +4706,7 @@ public class FtxMessages {
      * To initialize the player, you would need to create a shared texture and initialize the player.
      * @param onlyAudio 是否是纯音频模式 if pure audio mode
      */
-    @NonNull 
+    @NonNull
     IntMsg initialize(@NonNull BoolPlayerMsg onlyAudio);
     /**
      * 通过url开始播放视频
@@ -4658,7 +4725,7 @@ public class FtxMessages {
      * @param url : 视频播放地址 video playback address
      * return 是否播放成功 if play successfully
      */
-    @NonNull 
+    @NonNull
     BoolMsg startVodPlay(@NonNull StringPlayerMsg url);
     /**
      * 通过fileId播放视频
@@ -4682,7 +4749,7 @@ public class FtxMessages {
      *
      * Playing DRM-encrypted video.
      */
-    @NonNull 
+    @NonNull
     IntMsg startPlayDrm(@NonNull TXPlayerDrmMsg params);
     /**
      * 设置是否自动播放
@@ -4696,14 +4763,14 @@ public class FtxMessages {
      * Stop playback
      * return 是否停止成功 if stop successful
      */
-    @NonNull 
+    @NonNull
     BoolMsg stop(@NonNull BoolPlayerMsg isNeedClear);
     /**
      * 视频是否处于正在播放中
      *
      * Is the video currently playing
      */
-    @NonNull 
+    @NonNull
     BoolMsg isPlaying(@NonNull PlayerMsg playerMsg);
     /**
      * 视频暂停，必须在播放器开始播放的时候调用
@@ -4767,14 +4834,14 @@ public class FtxMessages {
      *         height:the video height of this bitrate,
      *         bitrate:bitrate value
      */
-    @NonNull 
+    @NonNull
     ListMsg getSupportedBitrate(@NonNull PlayerMsg playerMsg);
     /**
      * 获得当前设置的码率序号
      *
      * Get the index of the current bitrate setting
      */
-    @NonNull 
+    @NonNull
     IntMsg getBitrateIndex(@NonNull PlayerMsg playerMsg);
     /**
      * 设置码率序号
@@ -4799,7 +4866,7 @@ public class FtxMessages {
      *
      * Request audio focus.
      */
-    @NonNull 
+    @NonNull
     BoolMsg setRequestAudioFocus(@NonNull BoolPlayerMsg focus);
     /**
      * 设置播放器配置
@@ -4813,35 +4880,35 @@ public class FtxMessages {
      *
      * Get the current playback time, in seconds.
      */
-    @NonNull 
+    @NonNull
     DoubleMsg getCurrentPlaybackTime(@NonNull PlayerMsg playerMsg);
     /**
      * 获得当前视频已缓存的时间
      *
      * Get the current amount of video that has been buffered.
      */
-    @NonNull 
+    @NonNull
     DoubleMsg getBufferDuration(@NonNull PlayerMsg playerMsg);
     /**
      * 获得当前视频的可播放时间
      *
      * Get the current playable duration of the video.
      */
-    @NonNull 
+    @NonNull
     DoubleMsg getPlayableDuration(@NonNull PlayerMsg playerMsg);
     /**
      * 获得当前播放视频的宽度
      *
      * Get the width of the currently playing video.
      */
-    @NonNull 
+    @NonNull
     IntMsg getWidth(@NonNull PlayerMsg playerMsg);
     /**
      * 获得当前播放视频的高度
      *
      * Get the height of the currently playing video.
      */
-    @NonNull 
+    @NonNull
     IntMsg getHeight(@NonNull PlayerMsg playerMsg);
     /**
      * 设置播放视频的token
@@ -4854,14 +4921,14 @@ public class FtxMessages {
      *
      * Is the currently playing video set to loop
      */
-    @NonNull 
+    @NonNull
     BoolMsg isLoop(@NonNull PlayerMsg playerMsg);
     /**
      * 开启/关闭硬件编码
      *
      * Enable/Disable hardware encoding.
      */
-    @NonNull 
+    @NonNull
     BoolMsg enableHardwareDecode(@NonNull BoolPlayerMsg enable);
     /**
      * 进入画中画模式，进入画中画模式，需要适配画中画模式的界面，安卓只支持7.0以上机型
@@ -4871,7 +4938,7 @@ public class FtxMessages {
      * @param backIcon playIcon pauseIcon forwardIcon 为播放后退、播放、暂停、前进的图标，如果赋值的话，将会使用传递的图标，否则
      * 使用系统默认图标，只支持flutter本地资源图片，传递的时候，与flutter使用图片资源一致，例如： images/back_icon.png
      */
-    @NonNull 
+    @NonNull
     IntMsg enterPictureInPictureMode(@NonNull PipParamsPlayerMsg pipParamsMsg);
     /**
      * 退出画中画，如果该播放器处于画中画模式
@@ -4882,22 +4949,22 @@ public class FtxMessages {
 
     void initImageSprite(@NonNull StringListPlayerMsg spriteInfo);
 
-    @NonNull 
+    @NonNull
     UInt8ListMsg getImageSprite(@NonNull DoublePlayerMsg time);
     /**
      * 获取总时长
      *
      * To get the total duration
      */
-    @NonNull 
+    @NonNull
     DoubleMsg getDuration(@NonNull PlayerMsg playerMsg);
 
     void addSubtitleSource(@NonNull SubTitlePlayerMsg playerMsg);
 
-    @NonNull 
+    @NonNull
     ListMsg getSubtitleTrackInfo(@NonNull PlayerMsg playerMsg);
 
-    @NonNull 
+    @NonNull
     ListMsg getAudioTrackInfo(@NonNull PlayerMsg playerMsg);
 
     void selectTrack(@NonNull IntPlayerMsg playerMsg);
@@ -4913,6 +4980,18 @@ public class FtxMessages {
     void setRenderMode(@NonNull Long renderMode);
 
     void reDraw();
+
+    void enableTRTC(@NonNull Boolean isEnabled);
+
+    void publishVideo();
+
+    void unpublishVideo();
+
+    void publishAudio();
+
+    void unpublishAudio();
+
+    void setAutoPictureInPictureEnabled(@NonNull Boolean isEnabled);
 
     /** The codec used by TXFlutterVodPlayerApi. */
     static @NonNull MessageCodec<Object> getCodec() {
@@ -5934,6 +6013,136 @@ public class FtxMessages {
           channel.setMessageHandler(null);
         }
       }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.enableTRTC" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                ArrayList<Object> args = (ArrayList<Object>) message;
+                Boolean isEnabledArg = (Boolean) args.get(0);
+                try {
+                  api.enableTRTC(isEnabledArg);
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.publishVideo" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.publishVideo();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.unpublishVideo" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.unpublishVideo();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.publishAudio" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.publishAudio();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.unpublishAudio" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.unpublishAudio();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterVodPlayerApi.setAutoPictureInPictureEnabled" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                ArrayList<Object> args = (ArrayList<Object>) message;
+                Boolean isEnabledArg = (Boolean) args.get(0);
+                try {
+                  api.setAutoPictureInPictureEnabled(isEnabledArg);
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
     }
   }
   /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
@@ -5942,7 +6151,7 @@ public class FtxMessages {
      * 播放器初始化，创建共享纹理、初始化播放器
      * @param onlyAudio 是否是纯音频模式
      */
-    @NonNull 
+    @NonNull
     IntMsg initialize(@NonNull BoolPlayerMsg onlyAudio);
     /**
      *
@@ -5952,16 +6161,16 @@ public class FtxMessages {
      * 可[快速免费申请测试版 Licence](https://cloud.tencent.com/act/event/License) 以正常播放，正式版 License 需[购买]
      * (https://cloud.tencent.com/document/product/881/74588#.E8.B4.AD.E4.B9.B0.E5.B9.B6.E6.96.B0.E5.BB.BA.E6.AD.A3.E5.BC.8F.E7.89.88-license)。
      */
-    @NonNull 
+    @NonNull
     BoolMsg startLivePlay(@NonNull StringPlayerMsg playerMsg);
     /**
      * 停止播放
      * return 是否停止成功
      */
-    @NonNull 
+    @NonNull
     BoolMsg stop(@NonNull BoolPlayerMsg isNeedClear);
     /** 视频是否处于正在播放中 */
-    @NonNull 
+    @NonNull
     BoolMsg isPlaying(@NonNull PlayerMsg playerMsg);
     /** 视频暂停，必须在播放器开始播放的时候调用 */
     void pause(@NonNull PlayerMsg playerMsg);
@@ -5974,7 +6183,7 @@ public class FtxMessages {
     /** 设置是否静音 */
     void setMute(@NonNull BoolPlayerMsg mute);
     /** 切换播放流 */
-    @NonNull 
+    @NonNull
     IntMsg switchStream(@NonNull StringPlayerMsg url);
     /** 设置appId */
     void setAppID(@NonNull StringPlayerMsg appId);
@@ -5984,7 +6193,7 @@ public class FtxMessages {
      */
     void setConfig(@NonNull FTXLivePlayConfigPlayerMsg config);
     /** 开启/关闭硬件编码 */
-    @NonNull 
+    @NonNull
     BoolMsg enableHardwareDecode(@NonNull BoolPlayerMsg enable);
     /**
      * 进入画中画模式，进入画中画模式，需要适配画中画模式的界面，安卓只支持7.0以上机型
@@ -5994,31 +6203,37 @@ public class FtxMessages {
      * @param backIcon playIcon pauseIcon forwardIcon 为播放后退、播放、暂停、前进的图标，仅适用于android，如果赋值的话，将会使用传递的图标，否则
      * 使用系统默认图标，只支持flutter本地资源图片，传递的时候，与flutter使用图片资源一致，例如： images/back_icon.png
      */
-    @NonNull 
+    @NonNull
     IntMsg enterPictureInPictureMode(@NonNull PipParamsPlayerMsg pipParamsMsg);
     /** 退出画中画，如果该播放器处于画中画模式 */
     void exitPictureInPictureMode(@NonNull PlayerMsg playerMsg);
 
-    @NonNull 
+    @NonNull
     Long enableReceiveSeiMessage(@NonNull PlayerMsg playerMsg, @NonNull Boolean isEnabled, @NonNull Long payloadType);
 
     void showDebugView(@NonNull PlayerMsg playerMsg, @NonNull Boolean isShow);
 
-    @NonNull 
+    @NonNull
     Long setProperty(@NonNull PlayerMsg playerMsg, @NonNull String key, @NonNull Object value);
 
-    @NonNull 
+    @NonNull
     ListMsg getSupportedBitrate(@NonNull PlayerMsg playerMsg);
 
-    @NonNull 
+    @NonNull
     Long setCacheParams(@NonNull PlayerMsg playerMsg, @NonNull Double minTime, @NonNull Double maxTime);
 
-    @NonNull 
+    @NonNull
     Long enablePictureInPicture(@NonNull BoolPlayerMsg msg);
 
     void setPlayerView(@NonNull Long renderViewId);
 
     void setRenderMode(@NonNull Long renderMode);
+
+    void startLocalRecording(@NonNull Map<String, Object> localRecordingParams);
+
+    void stopLocalRecording();
+
+    void snapshot();
 
     /** The codec used by TXFlutterLivePlayerApi. */
     static @NonNull MessageCodec<Object> getCodec() {
@@ -6566,6 +6781,71 @@ public class FtxMessages {
           channel.setMessageHandler(null);
         }
       }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterLivePlayerApi.startLocalRecording" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                ArrayList<Object> args = (ArrayList<Object>) message;
+                Map<String, Object> localRecordingParamsArg = (Map<String, Object>) args.get(0);
+                try {
+                  api.startLocalRecording(localRecordingParamsArg);
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterLivePlayerApi.stopLocalRecording" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.stopLocalRecording();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
+      {
+        BasicMessageChannel<Object> channel =
+            new BasicMessageChannel<>(
+                binaryMessenger, "dev.flutter.pigeon.super_player.TXFlutterLivePlayerApi.snapshot" + messageChannelSuffix, getCodec());
+        if (api != null) {
+          channel.setMessageHandler(
+              (message, reply) -> {
+                ArrayList<Object> wrapped = new ArrayList<>();
+                try {
+                  api.snapshot();
+                  wrapped.add(0, null);
+                }
+ catch (Throwable exception) {
+                  wrapped = wrapError(exception);
+                }
+                reply.reply(wrapped);
+              });
+        } else {
+          channel.setMessageHandler(null);
+        }
+      }
     }
   }
   /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
@@ -6577,7 +6857,7 @@ public class FtxMessages {
      * preferredResolution 期望分辨率，long类型，值为高x宽。可参考如720*1080。不支持多分辨率或不需指定时，传-1。
      * 返回值：任务ID，可用这个任务ID停止预下载 [stopPreload]
      */
-    @NonNull 
+    @NonNull
     IntMsg startPreLoad(@NonNull PreLoadMsg msg);
 
     void startPreLoadByParams(@NonNull PreLoadInfoMsg msg);
@@ -6605,13 +6885,13 @@ public class FtxMessages {
     /** 设置下载请求头 */
     void setDownloadHeaders(@NonNull MapMsg headers);
     /** 获取所有视频下载列表 */
-    @NonNull 
+    @NonNull
     TXDownloadListMsg getDownloadList();
     /** 获得指定视频的下载信息 */
-    @NonNull 
+    @NonNull
     TXVodDownloadMediaMsg getDownloadInfo(@NonNull TXVodDownloadMediaMsg msg);
     /** 删除下载任务 */
-    @NonNull 
+    @NonNull
     BoolMsg deleteDownloadMediaInfo(@NonNull TXVodDownloadMediaMsg msg);
 
     /** The codec used by TXFlutterDownloadApi. */
@@ -6891,7 +7171,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
     public void onPreDownloadEvent(@NonNull Map<String, Object> eventArg, @NonNull VoidResult result) {
@@ -6911,7 +7191,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
   }
@@ -6952,7 +7232,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
     public void onNativeEvent(@NonNull Map<String, Object> eventArg, @NonNull VoidResult result) {
@@ -6972,7 +7252,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
   }
@@ -7013,7 +7293,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
   }
@@ -7054,7 +7334,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
     public void onNetEvent(@NonNull Map<String, Object> eventArg, @NonNull VoidResult result) {
@@ -7074,7 +7354,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
   }
@@ -7115,7 +7395,7 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
           });
     }
     public void onNetEvent(@NonNull Map<String, Object> eventArg, @NonNull VoidResult result) {
@@ -7135,7 +7415,87 @@ public class FtxMessages {
               }
             }  else {
               result.error(createConnectionError(channelName));
-            } 
+            }
+          });
+    }
+    public void onLocalRecordBegin(@NonNull Long codeArg, @NonNull String storagePathArg, @NonNull VoidResult result) {
+      final String channelName = "dev.flutter.pigeon.super_player.TXLivePlayerFlutterAPI.onLocalRecordBegin" + messageChannelSuffix;
+      BasicMessageChannel<Object> channel =
+          new BasicMessageChannel<>(
+              binaryMessenger, channelName, getCodec());
+      channel.send(
+          new ArrayList<>(Arrays.asList(codeArg, storagePathArg)),
+          channelReply -> {
+            if (channelReply instanceof List) {
+              List<Object> listReply = (List<Object>) channelReply;
+              if (listReply.size() > 1) {
+                result.error(new FlutterError((String) listReply.get(0), (String) listReply.get(1), listReply.get(2)));
+              } else {
+                result.success();
+              }
+            }  else {
+              result.error(createConnectionError(channelName));
+            }
+          });
+    }
+    public void onLocalRecording(@NonNull Long durationMsArg, @NonNull String storagePathArg, @NonNull VoidResult result) {
+      final String channelName = "dev.flutter.pigeon.super_player.TXLivePlayerFlutterAPI.onLocalRecording" + messageChannelSuffix;
+      BasicMessageChannel<Object> channel =
+          new BasicMessageChannel<>(
+              binaryMessenger, channelName, getCodec());
+      channel.send(
+          new ArrayList<>(Arrays.asList(durationMsArg, storagePathArg)),
+          channelReply -> {
+            if (channelReply instanceof List) {
+              List<Object> listReply = (List<Object>) channelReply;
+              if (listReply.size() > 1) {
+                result.error(new FlutterError((String) listReply.get(0), (String) listReply.get(1), listReply.get(2)));
+              } else {
+                result.success();
+              }
+            }  else {
+              result.error(createConnectionError(channelName));
+            }
+          });
+    }
+    public void onLocalRecordComplete(@NonNull Long codeArg, @NonNull String storagePathArg, @NonNull VoidResult result) {
+      final String channelName = "dev.flutter.pigeon.super_player.TXLivePlayerFlutterAPI.onLocalRecordComplete" + messageChannelSuffix;
+      BasicMessageChannel<Object> channel =
+          new BasicMessageChannel<>(
+              binaryMessenger, channelName, getCodec());
+      channel.send(
+          new ArrayList<>(Arrays.asList(codeArg, storagePathArg)),
+          channelReply -> {
+            if (channelReply instanceof List) {
+              List<Object> listReply = (List<Object>) channelReply;
+              if (listReply.size() > 1) {
+                result.error(new FlutterError((String) listReply.get(0), (String) listReply.get(1), listReply.get(2)));
+              } else {
+                result.success();
+              }
+            }  else {
+              result.error(createConnectionError(channelName));
+            }
+          });
+    }
+    public void onSnapshotComplete(@Nullable byte[] imageBytesArg, @NonNull VoidResult result) {
+      final String channelName = "dev.flutter.pigeon.super_player.TXLivePlayerFlutterAPI.onSnapshotComplete" + messageChannelSuffix;
+      BasicMessageChannel<Object> channel =
+          new BasicMessageChannel<>(
+              binaryMessenger, channelName, getCodec());
+      channel.send(
+          new ArrayList<>(Collections.singletonList(imageBytesArg)),
+          channelReply -> {
+            if (channelReply instanceof List) {
+              List<Object> listReply = (List<Object>) channelReply;
+              if (listReply.size() > 1) {
+                result.error(new FlutterError((String) listReply.get(0), (String) listReply.get(1), listReply.get(2)));
+              } else {
+                result.success();
+              }
+            }  else {
+              result.error(createConnectionError(channelName));
+            }
           });
     }
   }

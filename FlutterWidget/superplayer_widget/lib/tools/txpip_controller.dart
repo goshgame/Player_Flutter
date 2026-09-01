@@ -51,8 +51,7 @@ class TXPipController {
         } else {
           Navigator.of(context).pop();
         }
-      } else if ((Platform.isIOS && eventCode == TXVodPlayEvent.EVENT_IOS_PIP_MODE_WILL_EXIT) ||
-          (Platform.isAndroid && eventCode == TXVodPlayEvent.EVENT_PIP_MODE_ALREADY_EXIT)) {
+      } else if (eventCode == TXVodPlayEvent.EVENT_PIP_MODE_ALREADY_EXIT) {
         _playerData?.isEnterPip = false;
         /**
          * if you do not intend to continue reusing this vod player.
@@ -115,8 +114,8 @@ class TXPipController {
   }
 }
 
-abstract class TXPipPlayerRestorePage {
+mixin class TXPipPlayerRestorePage {
   /// This method will be called when it is necessary to save the relevant elements of the picture-in-picture interface.
   /// 当需要保存画中画界面相关元素的时候，会回调该方法
-  void onNeedSavePipPageState(Map<String, dynamic> params);
+  void onNeedSavePipPageState(Map<String, dynamic> params) {}
 }

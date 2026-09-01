@@ -124,8 +124,7 @@ class SuperPlayerViewState extends State<SuperPlayerView> with WidgetsBindingObs
         () => _playController.playerType == SuperPlayerType.VOD);
 
     // only register listen once
-    _pipSubscription =
-        SuperPlayerPlugin.instance.onExtraEventBroadcast.listen((event) {
+    _pipSubscription = SuperPlayerPlugin.instance.onExtraEventBroadcast.listen((event) {
       int eventCode = event["event"];
       if (eventCode == TXVodPlayEvent.EVENT_PIP_MODE_ALREADY_EXIT
         || eventCode == TXVodPlayEvent.EVENT_IOS_PIP_MODE_RESTORE_UI) {
@@ -143,8 +142,7 @@ class SuperPlayerViewState extends State<SuperPlayerView> with WidgetsBindingObs
         _playController._updatePlayerUIStatus(_pipPreUiStatus);
       }
     });
-    _volumeSubscription =
-        SuperPlayerPlugin.instance.onEventBroadcast.listen((event) {
+    _volumeSubscription = SuperPlayerPlugin.instance.onEventBroadcast.listen((event) {
       int eventCode = event["event"];
       if (_currentUIStatus ==  SuperPlayerUIStatus.PIP_MODE && _isPlaying) {
         if (eventCode == TXVodPlayEvent.EVENT_AUDIO_FOCUS_PAUSE) {
@@ -300,10 +298,6 @@ class SuperPlayerViewState extends State<SuperPlayerView> with WidgetsBindingObs
           await _playController.setPlayerView(-1);
           await connectPlayerView();
         });
-      } else {
-        Future.delayed(Duration(milliseconds: 300), () async {
-          _playController._vodPlayerController.reDraw();
-        });
       }
     }, () async {
       _playController._updatePlayerUIStatus(SuperPlayerUIStatus.WINDOW_MODE);
@@ -319,10 +313,6 @@ class SuperPlayerViewState extends State<SuperPlayerView> with WidgetsBindingObs
           // reset render mode for live
           await _playController.setPlayerView(-1);
           await connectPlayerView();
-        });
-      } else {
-        Future.delayed(Duration(milliseconds: 300), () async {
-          _playController._vodPlayerController.reDraw();
         });
       }
     });
@@ -702,7 +692,7 @@ class SuperPlayerViewState extends State<SuperPlayerView> with WidgetsBindingObs
     int playAction = _playController.videoModel!.playAction;
     if (playerState == SuperPlayerState.LOADING && playAction == SuperPlayerModel.PLAY_ACTION_PRELOAD) {
       _playController.resume();
-    } else if (playerState == SuperPlayerState.INIT) {
+    } else if (playerState == SuperPlayerState.INIT || playerState == SuperPlayerState.START) {
       if (playAction == SuperPlayerModel.PLAY_ACTION_PRELOAD) {
         _playController.resume();
       } else if (playAction == SuperPlayerModel.PLAY_ACTION_MANUAL_PLAY) {

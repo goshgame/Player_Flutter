@@ -1,3 +1,116 @@
+
+
+#### Version: 13.4.2 2026.08.24
+
+##### Features：
+
+- support passthrough rendering on TextureView (Android)
+- clamp PiP aspect ratio to prevent crash on extreme video dimensions (Android)
+- fix known issue
+
+
+#### Version: 13.4.1 2026.07.29
+
+##### Features：
+
+- set Android TXLiteAVSDK to 13.4.0.20477
+- set iOS TXLiteAVSDK to 13.4.21067
+- add encryptedMp4Level support for preload & download on Android
+- align Android PIP behavior with iOS
+- emit VOD_PLAY_EVT_PLAY_PAUSE event on Android pause, aligning with iOS SDK behavior
+- fix known issue
+
+
+#### Version: 13.4.0 2026.07.07
+
+##### Features：
+
+- set Android TXLiteAVSDK to 13.4.0.20472
+- set iOS TXLiteAVSDK to 13.4.21062
+- add setAutoPictureInPictureEnabled for auto Picture-in-Picture on iOS VOD
+- fix known issue
+
+
+#### Version: 13.3.1 2026.06.16
+
+##### Features：
+
+- support HDR on Android
+- bump minimum supported Flutter version to 3.27.4
+- fix known issue
+
+
+#### Version: 13.3.0 2026.05.08
+
+##### Features：
+
+- improve compatibility in multi-engine mode
+- set Android TXLiteAVSDK to 13.3.0.20247
+- set iOS TXLiteAVSDK to 13.3.20845
+- fix known issue
+
+
+
+#### Version: 13.2.1 2026.04.21
+
+##### Features：
+
+- fix known issue
+
+
+
+#### Version: 13.2.0 2026.04.20
+
+##### Features：
+
+- set Android TXLiteAVSDK to 13.2.0.20058
+- set iOS TXLiteAVSDK to 13.2.20652
+- fix known issue
+
+#### Version: 13.1.0 2026.01.29
+
+##### Features：
+
+- set Android TXLiteAVSDK to 13.1.0.19861
+- set iOS TXLiteAVSDK to 13.1.20454
+- adds snapshot and local recording related interfaces and callbacks for live streaming.
+- fix known issue
+
+
+#### Version: 13.0.1 2026.01.22
+
+##### Features：
+
+- set iOS TXLiteAVSDK to 13.0.20275
+- adds new interfaces related to TRTC stream transmission.
+- compatible with interface calls for Android 15 and above.
+- fix known issue
+
+
+#### Version: 13.0.0 2026.01.08
+
+##### Features：
+
+- set Android TXLiteAVSDK to 13.0.0.19676
+- set iOS TXLiteAVSDK to 13.0.20258
+- the integration method has been modified to a custom sub_spec approach, where the SDK is specified via the sub_spec method.
+- compatible with lower compilation versions on Android.
+- after the plugin is released, it will release all the players it currently holds.
+- fix known issue
+
+
+#### Version: 12.9.1 2025.12.04
+
+##### Features：
+
+- set Android TXLiteAVSDK to 12.9.0.19478
+- set iOS TXLiteAVSDK to 12.9.20085
+- fix the issue where getDownloadInfo does not return isResourceBroken
+- when adjusting the volume of UI components, the iOS end no longer seizes the audio focus
+- fix some logical issues with UI components
+- Fix known issue
+
+
 #### Version: 12.9.0 2025.11.13
 
 ##### Features：
@@ -90,15 +203,18 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.6.0.17772，tag：release_pro_v12.6.0
-- set iOS TXLiteAVSDK_Professional to 12.6.18866， tag：release_pro_v12.6.0
+- set Android TXLiteAVSDK_Player to 12.5.0.17576，tag：release_player_v12.5.1
+- set iOS TXLiteAVSDK_Player to 12.5.18393， tag：release_player_v12.5.1
+- The `SuperPlayerPlugin` has added the `setDrmProvisionEnv` method for switching the DRM playback environment.
+- Fixed an issue where the video screen could not be restored when returning to the foreground from the background while using SurfaceView on the Android side.
+- Fix the issue where the UI component's fullscreen operation behaves unexpectedly on some older Android devices.
 
 #### Version: 12.5.1 2025.06.18
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.5.0.17576，tag：release_pro_v12.5.1
-- set iOS TXLiteAVSDK_Professional to 12.5.18393， tag：release_pro_v12.5.1
+- set Android TXLiteAVSDK_Player to 12.5.0.17576，tag：release_player_v12.5.1
+- set iOS TXLiteAVSDK_Player to 12.5.18393， tag：release_player_v12.5.1
 - The `SuperPlayerPlugin` has added the `setDrmProvisionEnv` method for switching the DRM playback environment.
 - Fixed an issue where the video screen could not be restored when returning to the foreground from the background while using SurfaceView on the Android side.
 - Fix the issue where the UI component's fullscreen operation behaves unexpectedly on some older Android devices.
@@ -107,8 +223,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.5.0.17567，tag：release_pro_v12.5.0
-- set iOS TXLiteAVSDK_Professional to 12.5.18359， tag：release_pro_v12.5.0
+- set Android TXLiteAVSDK_Player to 12.5.0.17567，tag：release_player_v12.5.0
+- set iOS TXLiteAVSDK_Player to 12.5.18359， tag：release_player_v12.5.0
 - Added the `setRenderMode` method to the player, allowing configuration of the tiling mode for video rendering.
 - Fixed an issue on Android where the player screen would turn black after pausing, moving to the background, and then returning to the foreground.
 - Optimized the delay of the first frame rendering in the Flutter player compared to event triggers.
@@ -139,8 +255,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.4.0.17372，tag：release_pro_v12.4.0
-- set iOS TXLiteAVSDK_Professional to 12.4.17856， tag：release_pro_v12.4.0
+- set Android TXLiteAVSDK_Player to 12.4.0.17372，tag：release_player_v12.4.0
+- set iOS TXLiteAVSDK_Player to 12.4.17856， tag：release_player_v12.4.0
 - The Android picture-in-picture button icon can be hidden by passing an empty string.
 - The binding method of the player texture for the controller parameter of TXPlayerVideo is no longer recommended. It is recommended to use the onRenderViewCreated method instead.
 - Fix the issue where the window size and aspect ratio of the picture do not match when Android live streaming enters picture-in-picture mode.
@@ -152,7 +268,7 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.3.0.17122，tag：release_pro_v12.3.1
+- set Android TXLiteAVSDK_Player to 12.3.0.17122，tag：release_player_v12.3.1
 - TXPlayerVideo has added a new onRenderViewCreatedListener callback. After obtaining the viewId of TXPlayerVideo, you can set the viewId to the player when needed.
 - Fix an issue that the picture-in-picture on iOS does not display correctly in the window in some cases.
 - Fix an issue that the aspect ratio of the picture-in-picture window is incorrect on Android.
@@ -160,11 +276,13 @@
 - Fix an issue that long-term video playback causes memory overflow on iOS.
 - Fix an issue that high-security-level DRM videos cannot be played on iOS.
 
-### Version: 12.3.0 2025.01.21
 
-#### Features：
-- set Android TXLiteAVSDK_Professional to 12.3.0.17115，tag：release_pro_v12.3.0
-- set iOS TXLiteAVSDK_Professional to 12.3.16995， tag：release_pro_v12.3.0
+#### Version: 12.3.0 2025.01.21
+
+##### Features：
+
+- set Android TXLiteAVSDK_Player to 12.3.0.17115，tag：release_player_v12.3.0
+- set iOS TXLiteAVSDK_Player to 12.3.16995， tag：release_player_v12.3.0
 
 
 #### Version: 12.2.2 2024.12.30
@@ -178,8 +296,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.2.0.15072，tag：release_pro_v12.2.1
-- set iOS TXLiteAVSDK_Professional to 12.2.16956， tag：release_pro_v12.2.1
+- set Android TXLiteAVSDK_Player to 12.2.0.15065，tag：release_player_v12.2.0
+- set iOS TXLiteAVSDK_Player to 12.2.16945， tag：release_player_v12.2.0
 - Fix the issue that picture-in-picture cannot be launched on some Android systems.
 - Fix the issue of abnormal use after cold startup on some Android systems.
 - Fix the issue that there is no subtitle callback without setting config on iOS.
@@ -192,8 +310,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.2.0.15065，tag：release_pro_v12.2.0
-- set iOS TXLiteAVSDK_Professional to 12.2.16945， tag：release_pro_v12.2.0
+- set Android TXLiteAVSDK_Player to 12.2.0.15065，tag：release_player_v12.2.0
+- set iOS TXLiteAVSDK_Player to 12.2.16945， tag：release_player_v12.2.0
 - Pre-download supports httpHeader
 - Supports encrypted playback of MP4
 - Added support for HEVC playback downgrade
@@ -204,8 +322,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.1.0.14886，tag：release_pro_v12.1.0
-- set iOS TXLiteAVSDK_Professional to 12.1.16597， tag：release_pro_v12.1.0
+- set Android TXLiteAVSDK_Player to 12.0.0.14689，tag：release_player_v12.0.1
+- set iOS TXLiteAVSDK_Player to 12.0.16301， tag：release_player_v12.0.1
 - Fix the issue of reversed logic in the live streaming mute method.
 - iOS adds support for Picture-in-Picture for live streaming, which requires premium permission to use.
 - Fix other known issues.
@@ -215,8 +333,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.0.0.14689，tag：release_pro_v12.0.1
-- set iOS TXLiteAVSDK_Professional to 12.1.16597， tag：release_pro_v12.0.1
+- set Android TXLiteAVSDK_Player to 12.0.0.14689，tag：release_player_v12.0.1
+- set iOS TXLiteAVSDK_Player to 12.0.16301， tag：release_player_v12.0.1
 - Fix the issue where textures are not refreshed in some cases
 - Fix the issue where updating Picture-in-Picture produces errors when Picture-in-Picture ends in some cases
 - Modify the plugin callback Flutter side message architecture
@@ -228,8 +346,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 12.0.0.14681，tag：release_pro_v12.0.0
-- set iOS TXLiteAVSDK_Professional to 12.0.16292， tag：release_pro_v12.0.0
+- set Android TXLiteAVSDK_Player to 12.0.0.14681，tag：release_player_v12.0.0
+- set iOS TXLiteAVSDK_Player to 12.0.16292， tag：release_player_v12.0.0
 - Live streaming replaces the new kernel.
 - As the new kernel has been replaced, the live streaming live config currently only retains the properties of maxAutoAdjustCacheTime, minAutoAdjustCacheTime, connectRetryCount, and connectRetryInterval, with the rest of the parameters marked as deprecated.
 - New interfaces have been added to live streaming: enableReceiveSeiMessage, showDebugView, setProperty, getSupportedBitrate, and setCacheParams.
@@ -254,8 +372,8 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 11.9.0.14445，tag：release_pro_v11.9.0
-- set iOS TXLiteAVSDK_Professional to 11.9.15963， tag：release_pro_v11.9.0
+- set Android TXLiteAVSDK_Player to 11.9.0.14445，tag：release_player_v11.9.0
+- set iOS TXLiteAVSDK_Player to 11.9.15963， tag：release_player_v11.9.0
 - Android compatible with high version Gradle
 - The location of the superPlayerWidget has changed, integrating superPlayer will no longer include the source code of the superPlayerWidget
 - Android picture-in-picture feature logic optimization, compatible with more models
@@ -265,24 +383,24 @@
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 11.8.0.14188，tag：release_pro_v11.8.1
-- set iOS TXLiteAVSDK_Professional to 11.8.15687， tag：release_pro_v11.8.1
+- set Android TXLiteAVSDK_Player to 11.8.0.14188，tag：release_player_v11.8.1
+- set iOS TXLiteAVSDK_Player to 11.8.15687， tag：release_player_v11.8.1
 
 
 #### Version: 11.8.0 2024.05.06
 
 ##### Features：
 
-- set Android TXLiteAVSDK_Professional to 11.8.0.14176，tag：release_pro_v11.8.0
-- set iOS TXLiteAVSDK_Professional to 11.8.15669， tag：release_pro_v11.8.0
+- set Android TXLiteAVSDK_Player to 11.8.0.14176，tag：release_player_v11.8.0
+- set iOS TXLiteAVSDK_Player to 11.8.15669， tag：release_player_v11.8.0
 
 
 #### Version: 11.7.0 2024.04.02
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.7.0.13946，tag：release_pro_v11.7.0
-- set iOS TXLiteAVSDK_Professional to 11.7.15343， tag：release_pro_v11.7.0
+- set Android TXLiteAVSDK_Player to 11.7.0.13946，tag：release_player_v11.7.0
+- set iOS TXLiteAVSDK_Player to 11.7.15343， tag：release_player_v11.7.0
 - Add setSDKListener in SuperPlayerPlugin
 - fix known issues
 
@@ -291,8 +409,8 @@
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.6.0.13641，tag：release_pro_v11.6.1
-- set iOS TXLiteAVSDK_Professional to 11.6.15041， tag：release_pro_v11.6.1
+- set Android TXLiteAVSDK_Player to 11.6.0.13641，tag：release_player_v11.6.1
+- set iOS TXLiteAVSDK_Player to 11.6.15041， tag：release_player_v11.6.1
 - superPlayerWidget add renderMode config
 - superPlayerWidget add stopPlay method
 - vod/live dispose method can await now
@@ -303,8 +421,8 @@
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.6.0.13613，tag：release_pro_v11.6.0
-- set iOS TXLiteAVSDK_Professional to 11.6.15007， tag：release_pro_v11.6.0
+- set Android TXLiteAVSDK_Player to 11.6.0.13613，tag：release_player_v11.6.0
+- set iOS TXLiteAVSDK_Player to 11.6.15007， tag：release_player_v11.6.0
 - Adapt the Flutter player to the new version of the Flutter SDK
 - fix player and player's widget known issues
 
@@ -313,8 +431,8 @@
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.4.0.13270，tag：release_pro_v11.4.1
-- set iOS TXLiteAVSDK_Professional to 11.4.14552， tag：release_pro_v11.4.1
+- set Android TXLiteAVSDK_Player to 11.4.0.13270，tag：release_player_v11.4.1
+- set iOS TXLiteAVSDK_Player to 11.4.14552， tag：release_player_v11.4.1
 - add fileId pre-download capability
 - fix known issues
 
@@ -323,131 +441,118 @@
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.4.0.13189，tag：release_pro_v11.4.0
-- set iOS TXLiteAVSDK_Professional to 11.4.14445， tag：release_pro_v11.4.0
+- set Android TXLiteAVSDK_Player to 11.4.0.13189，tag：release_player_v11.4.0
+- set iOS TXLiteAVSDK_Player to 11.4.14445， tag：release_player_v11.4.0
 
 
 #### Version: 11.3.0 2023.07.07
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.3.0.13171，tag：release_pro_v11.3.0
-- set iOS TXLiteAVSDK_Professional to 11.3.14327， tag：release_pro_v11.3.0
+- set Android TXLiteAVSDK_Player to 11.3.0.13171，tag：release_player_v11.3.0
+- set iOS TXLiteAVSDK_Player to 11.3.14327， tag：release_player_v11.3.0
 
 
 #### Version: 11.2.0 2023.06.05
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.2.0.13154，tag：release_pro_v11.2.0
-- set iOS TXLiteAVSDK_Professional to 11.2.14217， tag：release_pro_v11.2.0
+- set Android TXLiteAVSDK_Player to 11.2.0.13154，tag：release_player_v11.2.0
+- set iOS TXLiteAVSDK_Player to 11.2.14217， tag：release_player_v11.2.0
 
 
 #### Version: 11.1.1 2023.05.08
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.1.0.13141，tag：release_pro_v11.1.1
-- set iOS TXLiteAVSDK_Professional to 11.1.14143， tag：release_pro_v11.1.1
+- set Android TXLiteAVSDK_Player to 11.1.0.13141，tag：release_player_v11.1.1
+- set iOS TXLiteAVSDK_Player to 11.1.14143， tag：release_player_v11.1.1
 
 
 #### Version: 11.1.0 2023.04.10
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.1.0.13111，tag：release_pro_v11.1.0
-- set iOS TXLiteAVSDK_Professional to 11.1.14125， tag：release_pro_v11.1.0
+- set Android TXLiteAVSDK_Player to 11.1.0.13111，tag：release_player_v11.1.0
+- set iOS TXLiteAVSDK_Player to 11.1.14125， tag：release_player_v11.1.0
 
 
 #### Version: 11.0.0 2023.03.20
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 11.0.0.13129，tag：release_pro_v11.0.0
-- set iOS TXLiteAVSDK_Professional to 11.0.14032， tag：release_pro_v11.0.0
+- set Android TXLiteAVSDK_Player to 11.0.0.13129，tag：release_player_v11.0.0
+- set iOS TXLiteAVSDK_Player to 11.0.14032， tag：release_player_v11.0.0
 
 
-#### Version: 10.9.1  2023.02.24
-
-##### 版本特性：
-
-- set Android TXLiteAVSDK_Professional to 10.9.0.13102，tag：release_pro_v10.9.1
-- set iOS TXLiteAVSDK_Professional to 10.9.13161， tag：release_pro_v10.9.1
-
-
-#### Version: 10.9.0  2023.01.03
+#### Version: 10.9.1 2023.02.24
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.9.0.13092，tag：release_pro_v10.9.0
-- set iOS TXLiteAVSDK_Professional to 10.9.13148， tag：release_pro_v10.9.0
+- set Android TXLiteAVSDK_Player to 10.9.0.13102，tag：release_player_v10.9.1
+- set iOS TXLiteAVSDK_Player to 10.9.13161， tag：release_player_v10.9.1
 
 
-#### Version: 10.8.0_stable  2022.12.01
+#### Version: 10.9.0 2023.01.03
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.8.0.13065，tag：release_pro_v10.8.0_stable
-- set iOS TXLiteAVSDK_Professional to 10.8.12025， tag：release_pro_v10.8.0_stable
+- set Android TXLiteAVSDK_Player to 10.9.0.13092，tag：release_player_v10.9.0
+- set iOS TXLiteAVSDK_Player to 10.9.13148， tag：release_player_v10.9.0
+
+
+#### Version: 10.8.0_stable 2022.12.01
+
+##### 版本特性：
+
+- set Android TXLiteAVSDK_Player to 10.8.0.13065，tag：release_player_v10.0.8_stable
+- set iOS TXLiteAVSDK_Player to 10.8.12025， tag：release_player_v10.0.8_stable
 
 
 #### Version: 10.8.0  2022.12.01
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.8.0.13052，tag：release_pro_v10.8.0
-- set iOS TXLiteAVSDK_Professional to 10.8.12015， tag：release_pro_v10.8.0
+- set Android TXLiteAVSDK_Player to 10.8.0.13052，tag：release_player_v10.0.8
+- set iOS TXLiteAVSDK_Player to 10.8.12015， tag：release_player_v10.0.8
 
 
 #### Version: 1.0.7  2022.10.27
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.7.0.13053，tag：release_pro_v1.0.7
-- set iOS TXLiteAVSDK_Professional to 10.7.11936， tag：release_pro_v1.0.7
+- set Android TXLiteAVSDK_Player to 10.7.0.13053，tag：release_player_v1.0.7
+- set iOS TXLiteAVSDK_Player to 10.7.11936， tag：release_player_v1.0.7
 
 
 #### Version: 1.0.6  2022.09.19
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.6.0.11182，tag：release_pro_v1.0.6
-- set iOS TXLiteAVSDK_Professional to 10.6.11822， tag：release_pro_v1.0.6
+- set Android TXLiteAVSDK_Player to 10.6.0.11182，tag：release_player_v1.0.6
+- set iOS TXLiteAVSDK_Player to 10.6.11822， tag：release_player_v1.0.6
 
 
 #### Version: 1.0.5  2022.09.02
+
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.5.0.11177，tag：release_pro_v1.0.5
-- set iOS TXLiteAVSDK_Professional to 10.5.11726， tag：release_pro_v1.0.5
+- set Android TXLiteAVSDK_Player to 10.5.0.11177，tag：release_player_v1.0.5
+- set iOS TXLiteAVSDK_Player to 10.5.11726， tag：release_player_v1.0.5
 
 
 #### Version: 1.0.4  2022.08.16
 
 ##### 版本特性：
 
-- set Android TXLiteAVSDK_Professional to 10.4.0.11168，tag：release_pro_v1.0.4
-- set iOS TXLiteAVSDK_Professional to 10.4.11619， tag：release_pro_v1.0.4
-
+- set Android TXLiteAVSDK_Player to 10.4.0.11164，tag：release_player_v1.0.4
+- set iOS TXLiteAVSDK_Player to 10.4.11617， tag：release_player_v1.0.4
+-
 
 #### Version: 1.0.3  2022.07.13
 
 ##### 版本特性：
 
 - iOS端新增画中画（PIP) 功能
-- set Android TXLiteAVSDK_Professional to 10.3.0.11144，tag：release_player_v1.0.3
-- set iOS TXLiteAVSDK_Professional to 10.3.11513， tag：release_pro_v1.0.3
-
-
-#### Version: 1.0.2  2022.07.05
-
-##### 版本特性：
-
-- Android 端新增画中画（PIP) 功能
-- 播放器组件（superplayer）用Dart重写，方便自定义集成
-- 修复通过appId 、fileId和 psign 播放失败问题
-
-- set Android TXLiteAVSDK_Professional to 10.2.0.11131，tag：release_player_v1.0.2
-- set iOS TXLiteAVSDK_Professional to 10.2.11418， tag：release_pro_v1.0.2
-
-
+- set Android TXLiteAVSDK_Player to 10.3.0.11144，tag：release_player_v1.0.3
+- set iOS TXLiteAVSDK_Player to 10.3.11513， tag：release_pro_v1.0.3
