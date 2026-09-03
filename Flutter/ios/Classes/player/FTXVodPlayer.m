@@ -35,6 +35,8 @@ static const int uninitialized = -1;
 @property (nonatomic, assign) BOOL renderWithTexture;
 @property (nonatomic, assign) BOOL autoPictureInPictureEnabled;
 @property (nonatomic, strong) FTXVodPictureInPictureController *pictureInPictureController API_AVAILABLE(ios(15.0));
+@property (nonatomic, assign) CGRect customPipHostViewFrame;
+@property (nonatomic, assign) BOOL hasCustomPipHostViewFrame;
 
 @end
 /**
@@ -786,14 +788,29 @@ static const int uninitialized = -1;
 
 - (UIView *)customPipHostView {
     if (!_customPipHostView) {
-        _customPipHostView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        UIViewController *flutterViewController = [self getFlutterViewController];
+        CGRect hostFrame = self.customPipHostViewFrame;
+        if (!self.hasCustomPipHostViewFrame) {
+            hostFrame = CGRectMake(0,0,1,1);
+        }
+        _customPipHostView = [[UIView alloc] initWithFrame:hostFrame];
         _customPipHostView.userInteractionEnabled = NO;
         _customPipHostView.alpha = 0.01;
         _customPipHostView.backgroundColor = UIColor.clearColor;
-        UIViewController *flutterViewController = [self getFlutterViewController];
         [flutterViewController.view addSubview:_customPipHostView];
     }
     return _customPipHostView;
+}
+
+- (void)updateCustomPipHostViewFrame:(CGRect)frame {
+    self.customPipHostViewFrame = frame;
+    self.hasCustomPipHostViewFrame = YES;
+    if (_customPipHostView) {
+        _customPipHostView.frame = frame;
+        if (@available(iOS 15.0, *)) {
+            [self.pictureInPictureController attachToHostView:_customPipHostView];
+        }
+    }
 }
 
 - (FTXVodPictureInPictureController *)customPictureInPictureController API_AVAILABLE(ios(15.0)) {
@@ -895,22 +912,40 @@ static const int uninitialized = -1;
 
 - (void)vodPictureInPictureControllerDidStop {
     self.hasEnteredPipMode = NO;
-    if (self.restoreUI) {
-        self.restoreUI = NO;
-    } else {
-        if (self.delegate && [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
-            [self.delegate onPlayerPipStateDidStop];
-        }
-    }
-    if (!self.autoPictureInPictureEnabled) {
+    BOOL shouldNotifyDidStop = !self.restoreUI;
+    self.restoreUI = NO;
+
+    if (@available(iOS 15.0, *)) {
+        FTXVodPictureInPictureController *pictureInPictureController =
+            self.pictureInPictureController;
+        [pictureInPictureController attachToHostView:[UIView new]];
         [_customPipHostView removeFromSuperview];
         _customPipHostView = nil;
+
+        pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline =
+            self.autoPictureInPictureEnabled;
+        if (self.autoPictureInPictureEnabled) {
+            [pictureInPictureController attachToHostView:self.customPipHostView];
+        }
     }
+
     [self updateVideoProcessDelegate];
+
+    if (shouldNotifyDidStop &&
+        self.delegate &&
+        [self.delegate respondsToSelector:@selector(onPlayerPipStateDidStop)]) {
+        [self.delegate onPlayerPipStateDidStop];
+    }
 }
 
 - (void)vodPictureInPictureControllerRestoreUI {
     self.restoreUI = YES;
+    if (_customPipHostView) {
+        _customPipHostView.alpha = 0.01;
+        if (@available(iOS 15.0, *)) {
+            [self.pictureInPictureController attachToHostView:_customPipHostView];
+        }
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         [self->_txVodPlayer resume];
     });
@@ -921,6 +956,7 @@ static const int uninitialized = -1;
 
 - (void)vodPictureInPictureControllerDidFailWithErrorCode:(NSInteger)errorCode {
     self.hasEnteredPipMode = NO;
+    _customPipHostView.alpha = 0.01;
     FTXLOGE(@"vod custom pip error:%ld", (long)errorCode);
     if (!self.autoPictureInPictureEnabled) {
         [_customPipHostView removeFromSuperview];

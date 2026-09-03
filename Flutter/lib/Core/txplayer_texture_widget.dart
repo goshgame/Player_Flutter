@@ -58,6 +58,9 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
 
   int? _textureId;
   bool _createFailed = false;
+  // Flutter 全局坐标与 iOS UIView 坐标同为逻辑点，用于对齐画中画返回 App 的落点。
+  Rect? _videoViewRect;
+  Rect? _lastSentVideoViewRect;
   static const String _tag = 'TXPlayerTexture';
 
   bool get _shouldCreateTexture =>
@@ -103,7 +106,9 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
         LogUtils.d(_tag, 'waiting controller init...');
         try {
           await widget.controller._initPlayer.future;
-        } catch (_) {}
+        } catch (error) {
+          LogUtils.d(_tag, 'wait controller init failed: $error');
+        }
       }
       // 注意：_playerId 为 library 私有字段，这里处于同一 library，可直接访问
       final int? playerId = widget.controller._playerId;
@@ -114,12 +119,23 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
         return;
       }
 
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+
+      final Rect? videoViewRect = _currentVideoViewRect();
+      _videoViewRect = videoViewRect;
+      final Map<String, dynamic> createArguments = <String, dynamic>{
+        'playerId': playerId,
+        'renderWithTexture': _isRenderWithTexture,
+      };
+      if (defaultTargetPlatform == TargetPlatform.iOS && videoViewRect != null) {
+        createArguments['pipHostViewRect'] = _rectArguments(videoViewRect);
+        _lastSentVideoViewRect = videoViewRect;
+      }
+
       final int? texId = await _textureChannel.invokeMethod<int>(
         'createTexture',
-        <String, dynamic>{
-          'playerId': playerId,
-          'renderWithTexture': _isRenderWithTexture
-        },
+        createArguments,
       );
 
       if (!mounted) return;
@@ -133,11 +149,14 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
 
       setState(() => _textureId = texId);
       LogUtils.d(_tag, 'createTexture success, textureId=$texId');
+      unawaited(_sendVideoViewRectToNative());
       // 通知业务层：Texture 已经就绪，可更新自身状态（如 _isViewAttached）。
       try {
         // 传递 textureId 给上层，便于做进一步处理
         widget.onTextureReady?.call(texId);
-      } catch (_) {}
+      } catch (error) {
+        LogUtils.d(_tag, 'onTextureReady callback failed: $error');
+      }
     } catch (e) {
       // 创建异常，回退到 PlatformView
       LogUtils.d(_tag, 'createTexture exception: $e');
@@ -145,9 +164,55 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
     }
   }
 
+  Rect? _currentVideoViewRect() {
+    final RenderObject? renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize ||
+        renderObject.size.isEmpty) {
+      return null;
+    }
+    return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+  }
+
+  Map<String, double> _rectArguments(Rect rect) => <String, double>{
+        'x': rect.left,
+        'y': rect.top,
+        'width': rect.width,
+        'height': rect.height,
+      };
+
+  void _handleVideoViewRectChanged(Rect rect) {
+    if (!mounted) return;
+    _videoViewRect = rect;
+    unawaited(_sendVideoViewRectToNative());
+  }
+
+  Future<void> _sendVideoViewRectToNative() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS || _textureId == null) return;
+    final Rect? rect = _videoViewRect;
+    final int? playerId = widget.controller._playerId;
+    if (rect == null || rect.isEmpty || rect == _lastSentVideoViewRect ||
+        playerId == null || playerId < 0) {
+      return;
+    }
+    _lastSentVideoViewRect = rect;
+    try {
+      await _textureChannel.invokeMethod<void>(
+        'updateTextureViewRect',
+        <String, dynamic>{
+          'playerId': playerId,
+          'pipHostViewRect': _rectArguments(rect),
+        },
+      );
+    } catch (error) {
+      LogUtils.d(_tag, 'update texture view rect failed: $error');
+    }
+  }
+
   @override
   void dispose() {
-    _disposeTextureSafe();
+    unawaited(_disposeTextureSafe());
     super.dispose();
   }
 
@@ -165,20 +230,20 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
           },
         );
       }
-    } catch (_) {
-      // 忽略释放异常，避免影响业务
+    } catch (error) {
+      // 页面释放不能被原生通道异常阻断，但保留日志以便定位纹理泄漏。
+      LogUtils.d(_tag, 'dispose texture failed: $error');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final Widget child;
     if (_isRenderWithPlatformView) {
-      return _buildPlatformVideoView();
-    }
-
-    // 首先尝试 Texture，未完成创建前展示空容器（由上层封面遮挡），失败才回退 PlatformView
-    if (_textureId != null) {
-      return IgnorePointer(
+      child = _buildPlatformVideoView();
+    } else if (_textureId != null) {
+      // 首先尝试 Texture，未完成创建前展示空容器（由上层封面遮挡），失败才回退 PlatformView
+      child = IgnorePointer(
         ignoring: true,
         // 通过 freeze 参数控制 Texture 是否冻结帧更新
         child: Texture(
@@ -186,12 +251,19 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
           freeze: widget.freeze,
         ),
       );
+    } else if (_createFailed) {
+      child = _buildPlatformVideoView();
+    } else {
+      // 等待创建结果时，先返回空容器（避免误触发回退 PlatformView）
+      child = const SizedBox.expand();
     }
-    if (_createFailed) {
-      return _buildPlatformVideoView();
+    if (defaultTargetPlatform != TargetPlatform.iOS || !_shouldCreateTexture) {
+      return child;
     }
-    // 等待创建结果时，先返回空容器（避免误触发回退 PlatformView）
-    return const SizedBox.expand();
+    return _TXPlayerTextureRectReporter(
+      onRectChanged: _handleVideoViewRectChanged,
+      child: child,
+    );
   }
 
   Widget _buildPlatformVideoView() {
@@ -206,5 +278,60 @@ class _TXPlayerTextureState extends State<TXPlayerTexture> {
         }
       },
     );
+  }
+}
+
+class _TXPlayerTextureRectReporter extends SingleChildRenderObjectWidget {
+  final ValueChanged<Rect> onRectChanged;
+
+  const _TXPlayerTextureRectReporter({
+    required this.onRectChanged,
+    required super.child,
+  });
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderTXPlayerTextureRectReporter(onRectChanged);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderTXPlayerTextureRectReporter renderObject,
+  ) {
+    renderObject.onRectChanged = onRectChanged;
+  }
+}
+
+class _RenderTXPlayerTextureRectReporter extends RenderProxyBox {
+  _RenderTXPlayerTextureRectReporter(this.onRectChanged);
+
+  ValueChanged<Rect> onRectChanged;
+  Rect? _lastRect;
+  bool _notificationScheduled = false;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    _scheduleRectNotification();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    _scheduleRectNotification();
+  }
+
+  void _scheduleRectNotification() {
+    if (_notificationScheduled) return;
+    // 布局和滚动绘制完成后再读取全局坐标，避免在 RenderObject 管线中调用平台通道。
+    _notificationScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationScheduled = false;
+      if (!attached || !hasSize || size.isEmpty) return;
+      final Rect rect = localToGlobal(Offset.zero) & size;
+      if (rect == _lastRect) return;
+      _lastRect = rect;
+      onRectChanged(rect);
+    });
   }
 }

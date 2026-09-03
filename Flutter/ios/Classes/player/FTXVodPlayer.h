@@ -26,6 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 仅支持 VOD；DRM、HDR 和内嵌字幕场景应继续使用 PlatformView
 - (void)enableExternalTextureWithConsumer:(void (^)(CVPixelBufferRef _Nonnull pixelBuffer))consumer renderWithTexture:(BOOL)renderWithTexture;
 - (void)disableExternalTexture;
+- (void)updateCustomPipHostViewFrame:(CGRect)frame;
 
 @end
 

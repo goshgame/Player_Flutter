@@ -4,6 +4,7 @@
 #import "FTXVodPlayer.h"
 
 #import <CoreVideo/CoreVideo.h>
+#import <math.h>
 
 @interface FTXVodTexture : NSObject<FlutterTexture>
 @property (nonatomic, assign) int64_t textureId;
@@ -46,7 +47,9 @@
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, FTXTextureEntry *> *textureEntries;
 
 - (void)handleCreateTexture:(FlutterMethodCall *)call result:(FlutterResult)result;
+- (void)handleUpdateTextureViewRect:(FlutterMethodCall *)call result:(FlutterResult)result;
 - (void)handleDisposeTexture:(FlutterMethodCall *)call result:(FlutterResult)result;
+- (nullable NSValue *)pipHostViewFrameFromArguments:(NSDictionary *)arguments;
 
 @end
 
@@ -65,6 +68,8 @@
         [_textureChannel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
             if ([call.method isEqualToString:@"createTexture"]) {
                 [weakSelf handleCreateTexture:call result:result];
+            } else if ([call.method isEqualToString:@"updateTextureViewRect"]) {
+                [weakSelf handleUpdateTextureViewRect:call result:result];
             } else if ([call.method isEqualToString:@"disposeTexture"]) {
                 [weakSelf handleDisposeTexture:call result:result];
             } else {
@@ -85,6 +90,11 @@
     if (![basePlayer isKindOfClass:FTXVodPlayer.class]) {
         result([FlutterError errorWithCode:@"no_player" message:@"VOD player not found" details:nil]);
         return;
+    }
+
+    NSValue *pipHostViewFrame = [self pipHostViewFrameFromArguments:call.arguments];
+    if (pipHostViewFrame) {
+        [(FTXVodPlayer *)basePlayer updateCustomPipHostViewFrame:pipHostViewFrame.CGRectValue];
     }
 
     [self disposeTextureForPlayerId:playerId];
@@ -116,6 +126,56 @@
         [weakSelf.registrar.textures textureFrameAvailable:textureId];
     } renderWithTexture:renderWithTexture];
     result(@(textureId));
+}
+
+- (void)handleUpdateTextureViewRect:(FlutterMethodCall *)call result:(FlutterResult)result {
+    NSNumber *playerId = call.arguments[@"playerId"];
+    if (![playerId isKindOfClass:NSNumber.class]) {
+        result([FlutterError errorWithCode:@"bad_args" message:@"playerId required" details:nil]);
+        return;
+    }
+    FTXBasePlayer *basePlayer = self.players[playerId];
+    if (![basePlayer isKindOfClass:FTXVodPlayer.class]) {
+        result([FlutterError errorWithCode:@"no_player" message:@"VOD player not found" details:nil]);
+        return;
+    }
+    NSValue *pipHostViewFrame = [self pipHostViewFrameFromArguments:call.arguments];
+    if (!pipHostViewFrame) {
+        result([FlutterError errorWithCode:@"bad_args" message:@"valid pipHostViewRect required" details:nil]);
+        return;
+    }
+    [(FTXVodPlayer *)basePlayer updateCustomPipHostViewFrame:pipHostViewFrame.CGRectValue];
+    result(nil);
+}
+
+- (nullable NSValue *)pipHostViewFrameFromArguments:(NSDictionary *)arguments {
+    if (![arguments isKindOfClass:NSDictionary.class]) {
+        return nil;
+    }
+    NSDictionary *pipHostViewRect = arguments[@"pipHostViewRect"];
+    if ([pipHostViewRect isKindOfClass:NSDictionary.class]) {
+        NSNumber *x = pipHostViewRect[@"x"];
+        NSNumber *y = pipHostViewRect[@"y"];
+        NSNumber *width = pipHostViewRect[@"width"];
+        NSNumber *height = pipHostViewRect[@"height"];
+        if ([x isKindOfClass:NSNumber.class] &&
+            [y isKindOfClass:NSNumber.class] &&
+            [width isKindOfClass:NSNumber.class] &&
+            [height isKindOfClass:NSNumber.class] &&
+            isfinite(x.doubleValue) &&
+            isfinite(y.doubleValue) &&
+            isfinite(width.doubleValue) &&
+            isfinite(height.doubleValue) &&
+            width.doubleValue > 0.0 &&
+            height.doubleValue > 0.0) {
+            CGRect frame = CGRectMake(x.doubleValue,
+                                      y.doubleValue,
+                                      width.doubleValue,
+                                      height.doubleValue);
+            return [NSValue valueWithCGRect:frame];
+        }
+    }
+    return nil;
 }
 
 - (void)handleDisposeTexture:(FlutterMethodCall *)call result:(FlutterResult)result {
