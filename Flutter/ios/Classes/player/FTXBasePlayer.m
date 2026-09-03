@@ -37,4 +37,8 @@ static atomic_int atomicId = 0;
 {
 
 }
+
+- (void)exitPictureInPictureOnApplicationActive
+{
+}
 @end

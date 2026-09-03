@@ -185,6 +185,14 @@
 
 #pragma mark - FlutterPlugin
 
+- (void)applicationDidBecomeActive:(UIApplication *)application {
+    @synchronized (self) {
+        for (FTXBasePlayer *player in self.players.allValues) {
+            [player exitPictureInPictureOnApplicationActive];
+        }
+    }
+}
+
 - (void)applicationWillTerminate:(UIApplication *)application {
     FTXLOGV(@"called applicationWillTerminate");
     [self destroy];

@@ -828,6 +828,16 @@ static const int uninitialized = -1;
     }
 }
 
+- (void)exitPictureInPictureOnApplicationActive {
+    if (@available(iOS 15.0, *)) {
+        if (self.pictureInPictureController.isActive ||
+            self.pictureInPictureController.isStarting) {
+            FTXLOGV(@"vodPlayer exits Picture in Picture after application became active");
+            [self stopCustomPictureInPicture];
+        }
+    }
+}
+
 - (void)invalidateCustomPictureInPicture {
     if (@available(iOS 15.0, *)) {
         [self.pictureInPictureController invalidate];

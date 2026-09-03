@@ -23,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)destroy;
 
+/// Stops Picture in Picture when the host application returns to the foreground.
+- (void)exitPictureInPictureOnApplicationActive;
+
 @end
 
 NS_ASSUME_NONNULL_END

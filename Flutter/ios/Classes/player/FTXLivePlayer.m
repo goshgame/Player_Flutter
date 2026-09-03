@@ -464,6 +464,13 @@ static const int uninitialized = -1;
     }
 }
 
+- (void)exitPictureInPictureOnApplicationActive {
+    if (self.hasEnteredPipMode || self.isStartEnterPipMode) {
+        FTXLOGV(@"livePlayer exits Picture in Picture after application became active");
+        [[FTXPipController shareInstance] exitPip];
+    }
+}
+
 - (nullable IntMsg *)initializeOnlyAudio:(nonnull BoolPlayerMsg *)onlyAudio error:(FlutterError * _Nullable __autoreleasing * _Nonnull)error {
     NSNumber* textureId = [self createPlayer:onlyAudio.value.boolValue];
     return [TXCommonUtil intMsgWith:textureId];
