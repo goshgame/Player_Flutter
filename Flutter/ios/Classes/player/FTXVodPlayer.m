@@ -3,6 +3,7 @@
 #import "FTXVodPlayer.h"
 #import "FTXTransformation.h"
 #import "FTXLiteAVSDKHeader.h"
+#import <math.h>
 #import <stdatomic.h>
 #import <libkern/OSAtomic.h>
 #import <Flutter/Flutter.h>
@@ -535,7 +536,6 @@ static const int uninitialized = -1;
         dic[EVT_FLUTTER_PROGRESS_MS] = @(progressMillisec);
         currentPlayTime = progressSec;
         param = dic;
-        [self invalidateCustomPictureInPicturePlaybackState];
     } else if(evtID == PLAY_EVT_PLAY_BEGIN) {
         currentPlayTime = 0;
         [self invalidateCustomPictureInPicturePlaybackState];
@@ -902,8 +902,13 @@ static const int uninitialized = -1;
 }
 
 - (void)vodPictureInPictureControllerSkipBySeconds:(NSTimeInterval)seconds {
-    NSTimeInterval targetTime = [self getCurrentPlaybackTime] + seconds;
-    [self seek:(float)MAX(targetTime, 0.0)];
+    NSTimeInterval currentTime = [self getCurrentPlaybackTime];
+    NSTimeInterval duration = [self getDuration];
+    NSTimeInterval targetTime = MAX(currentTime + seconds, 0.0);
+    if (isfinite(duration) && duration > 0.0) {
+        targetTime = MIN(targetTime, duration);
+    }
+    [self seek:(float)targetTime];
 }
 
 - (void)vodPictureInPictureControllerDidStart {

@@ -283,9 +283,14 @@ restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL 
     NSTimeInterval duration = [self.delegate vodPictureInPictureControllerDuration];
     NSTimeInterval currentTime = [self.delegate vodPictureInPictureControllerCurrentTime];
     if (!isfinite(duration) || duration <= 0.0) {
-        duration = MAX(currentTime + 3600.0, 3600.0);
+        return kCMTimeRangeInvalid;
     }
-    return CMTimeRangeMake(kCMTimeZero, CMTimeMakeWithSeconds(duration, 600));
+
+    currentTime = isfinite(currentTime) ? MIN(MAX(currentTime, 0.0), duration) : 0.0;
+    CMTime hostTime = CMClockGetTime(CMClockGetHostTimeClock());
+    CMTime playbackTime = CMTimeMakeWithSeconds(currentTime, 600);
+    CMTime rangeStart = CMTimeSubtract(hostTime, playbackTime);
+    return CMTimeRangeMake(rangeStart, CMTimeMakeWithSeconds(duration, 600));
 }
 
 - (void)pictureInPictureController:(AVPictureInPictureController *)pictureInPictureController
